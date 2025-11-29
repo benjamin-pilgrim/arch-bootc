@@ -9,14 +9,17 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/var/lib/pacman/sync \
     pacman -Sy --noconfirm --needed \
     ostree \
-    dracut
+    dracut \
+    base-devel rust git
 
-FROM base AS bootc-build
+FROM base AS devel
 
 # bootc build deps
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/var/lib/pacman/sync \
-    pacman -Sy --noconfirm --needed base-devel git rust
+    pacman -Sy --noconfirm --needed base-devel rust git
+
+FROM devel as bootc-build
 
 RUN git clone --depth 1 "https://github.com/tgnthump/bootc.git" /tmp/bootc
 
@@ -35,7 +38,8 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/var/lib/pacman/sync \
     pacman -Sy --noconfirm --needed \
     linux \
-    linux-firmware
+    linux-firmware \
+    intel-ucode
 
 # Regression with newer dracut broke this
 ADD rootfs/usr/lib/dracut /usr/lib/dracut
@@ -54,14 +58,14 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     glib2 \
     shadow \
     networkmanager \
-    pipewire pipewire-alsa pipewire-pulse pipewire-jack \
+    network-manager-applet \
+    pipewire pipewire-alsa pipewire-pulse pipewire-jack pavucontrol \
     wireplumber \
     openssh \
     man \
     nano \
     vim \
     wget \
-    sudo \
     podman \
     just \
     git \
@@ -72,17 +76,61 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     hypridle \
     hyprlock \
     hyprpolkitagent \
-    dunst \
+    swaync \
     kitty \
     qt5-wayland \
     qt6-wayland \
     waybar \
+    otf-font-awesome \
     nautilus \
     uwsm \
     libnewt \
     xdg-desktop-portal-hyprland \
+    brightnessctl \
+    playerctl \
+    usbutils \
+    fprintd \
+    firefox \
+    mesa \
+    intel-media-driver \
+    intel-media-sdk \
+    vulkan-intel \
+    intel-gpu-tools \
+    libva-utils \
+    vdpauinfo \
+    vulkan-tools \
+    chrony \
+    throttled \
+    fwupd \
+    tlp \
+    flatpak \
+    flatpak-builder \
+    bluez \
+    bluez-utils \
+    blueman \
+    ttf-jetbrains-mono-nerd \
+    code \
+    jq \
     && pacman -Scc --noconfirm
 
+
+RUN --mount=type=cache,target=/var/cache/pacman/pkg \
+    --mount=type=cache,target=/var/lib/pacman/sync \
+    mkdir /home/build && \
+    chgrp nobody /home/build && \
+    chmod g+ws /home/build && \
+    setfacl -m u::rwx,g::rwx /home/build && \
+    setfacl -d --set u::rwx,g::rwx,o::- /home/build && \
+    runuser -u nobody -- bash -c '\
+    export GNUPGHOME=/home/build && \
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc | gpg --import && \
+    cd /home/build && \
+    git clone https://aur.archlinux.org/1password.git && \
+    cd 1password && \
+    makepkg -s \
+    ' && \
+    pacman -U /home/build/1password/1password-*.tar.zst --noconfirm && \
+    rm -rf /home/build
 
 ADD rootfs/ /
 
@@ -100,7 +148,7 @@ RUN sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
     printf "[composefs]\nenabled = yes\n[sysroot]\nreadonly = true\n" | tee "/usr/lib/ostree/prepare-root.conf"
 
 # Discard trigger files for systemd-firstboot
-RUN rm /etc/shadow /etc/locale.conf /var/log/pacman.log
+RUN rm /etc/locale.conf /var/log/pacman.log
 
 RUN bootc container lint
 RUN date > /build.time

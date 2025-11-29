@@ -4,10 +4,10 @@ base_dir := env("BUILD_BASE_DIR", ".")
 filesystem := env("BUILD_FILESYSTEM", "ext4")
 
 build-containerfile $image_name=image_name:
-    sudo podman build -t "${image_name}:latest" .
+    run0 podman build -t "${image_name}:latest" .
 
 bootc *ARGS:
-    sudo podman run \
+    run0 podman run \
         --rm --privileged --pid=host \
         -it \
         -v /sys/fs/selinux:/sys/fs/selinux \
@@ -25,3 +25,6 @@ generate-bootable-image $base_dir=base_dir $filesystem=filesystem:
         fallocate -l 20G "${base_dir}/bootable.img"
     fi
     just bootc install to-disk --composefs-backend --via-loopback /data/bootable.img --filesystem "${filesystem}" --wipe --bootloader systemd
+
+upgrade:
+    bootc switch --transport containers-storage localhost/{{image_name}}:{{image_tag}}
