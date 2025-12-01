@@ -1,25 +1,20 @@
 FROM docker.io/archlinux/archlinux:latest AS base
 
+RUN mv /var/lib/pacman /usr/lib/pacman && echo "DBPath = /usr/lib/pacman/" >> /etc/pacman.conf
+
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/var/lib/pacman/sync \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
     pacman -Syu --noconfirm --needed archlinux-keyring
 
 #bootc runtime + build deps
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/var/lib/pacman/sync \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
     pacman -Sy --noconfirm --needed \
     ostree \
     dracut \
     base-devel rust git
 
-FROM base AS devel
-
-# bootc build deps
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/var/lib/pacman/sync \
-    pacman -Sy --noconfirm --needed base-devel rust git
-
-FROM devel as bootc-build
+FROM base as bootc-build
 
 RUN git clone --depth 1 "https://github.com/tgnthump/bootc.git" /tmp/bootc
 
@@ -35,7 +30,7 @@ COPY --from=bootc-build /sysroot/ /
 
 #dracut runtime deps
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/var/lib/pacman/sync \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
     pacman -Sy --noconfirm --needed \
     linux \
     linux-firmware \
@@ -49,7 +44,7 @@ RUN KERNEL_VERSION="$(ls -1 /usr/lib/modules | sort -V | tail -n 1)" && \
     dracut --force --no-hostonly --reproducible --zstd --verbose --kver "$KERNEL_VERSION" "/usr/lib/modules/$KERNEL_VERSION/initramfs.img"
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/var/lib/pacman/sync \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
     pacman -Sy --noconfirm --needed \
     btrfs-progs e2fsprogs xfsprogs dosfstools fuse-overlayfs \
     skopeo \
@@ -113,9 +108,10 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     jq \
     && pacman -Scc --noconfirm
 
+ADD rootfs/ /
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/var/lib/pacman/sync \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
     mkdir /home/build && \
     chgrp nobody /home/build && \
     chmod g+ws /home/build && \
@@ -131,8 +127,6 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     ' && \
     pacman -U /home/build/1password/1password-*.tar.zst --noconfirm && \
     rm -rf /home/build
-
-ADD rootfs/ /
 
 # Necessary for general behavior expected by image-based systems
 RUN sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
