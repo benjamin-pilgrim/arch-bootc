@@ -120,40 +120,46 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
 
 ADD rootfs/ /
 
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
-    mkdir /home/build && \
-    chgrp nobody /home/build && \
-    chmod g+ws /home/build && \
-    setfacl -m u::rwx,g::rwx /home/build && \
-    setfacl -d --set u::rwx,g::rwx,o::- /home/build && \
-    runuser -u nobody -- bash -c '\
-    export GNUPGHOME=/home/build && \
-    curl -sS https://downloads.1password.com/linux/keys/1password.asc | gpg --import && \
-    cd /home/build && \
-    git clone https://aur.archlinux.org/1password.git && \
-    cd 1password && \
-    makepkg -s \
-    ' && \
-    pacman -U /home/build/1password/1password-*.tar.zst --noconfirm && \
-    rm -rf /home/build
+RUN useradd --create-home --shell /bin/bash --user-group makepkg && \
+    install -d -o makepkg -g makepkg /home/makepkg/.config/pacman && \
+    install -d -m 700 -o makepkg -g makepkg /home/makepkg/.gnupg && \
+    install -d -o makepkg -g makepkg /home/makepkg/out && \
+    printf 'MAKEFLAGS="-j%s"\nPKGDEST="/home/makepkg/out"\n' "$(nproc)" > /home/makepkg/.config/pacman/makepkg.conf && \
+    runuser -u makepkg -- sh -c 'printf "keyserver-options auto-key-retrieve\n" > ~/.gnupg/gpg.conf' && \
+    chmod 600 /home/makepkg/.gnupg/gpg.conf
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    mkdir /home/build && \
-    chgrp nobody /home/build && \
-    chmod g+ws /home/build && \
-    setfacl -m u::rwx,g::rwx /home/build && \
-    setfacl -d --set u::rwx,g::rwx,o::- /home/build && \
-    runuser -u nobody -- bash -c '\
-    export GNUPGHOME=/home/build && \
-    cd /home/build && \
-    git clone https://aur.archlinux.org/jetbrains-toolbox.git && \
+    runuser -u makepkg -- bash -c '\
+    set -euo pipefail && \
+    umask 022 && \
+    export GNUPGHOME="$HOME/.gnupg" && \
+    install -d -m 700 "$GNUPGHOME" && \
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc | gpg --import && \
+    workdir="$(mktemp -d)" && \
+    trap "rm -rf \"$workdir\"" EXIT && \
+    cd "$workdir" && \
+    git clone --depth 1 --single-branch https://aur.archlinux.org/1password.git && \
+    cd 1password && \
+    makepkg -s \
+    ' && \
+    pacman -U /home/makepkg/out/1password-*.pkg.tar.zst --noconfirm && \
+    rm -f /home/makepkg/out/1password-*.pkg.tar.zst
+
+RUN --mount=type=cache,target=/var/cache/pacman/pkg \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
+    runuser -u makepkg -- bash -c '\
+    set -euo pipefail && \
+    umask 022 && \
+    workdir="$(mktemp -d)" && \
+    trap "rm -rf \"$workdir\"" EXIT && \
+    cd "$workdir" && \
+    git clone --depth 1 --single-branch https://aur.archlinux.org/jetbrains-toolbox.git && \
     cd jetbrains-toolbox && \
     makepkg -s \
     ' && \
-    pacman -U /home/build/jetbrains-toolbox/jetbrains-toolbox-*.tar.zst --noconfirm && \
-    rm -rf /home/build
+    pacman -U /home/makepkg/out/jetbrains-toolbox-*.pkg.tar.zst --noconfirm && \
+    rm -f /home/makepkg/out/jetbrains-toolbox-*.pkg.tar.zst
 
 # Necessary for general behavior expected by image-based systems
 RUN sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
