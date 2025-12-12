@@ -12,9 +12,13 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     pacman -Sy --noconfirm --needed \
     ostree \
     dracut \
-    base-devel rust git
+    base-devel git
 
 FROM base as bootc-build
+
+RUN --mount=type=cache,target=/var/cache/pacman/pkg \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
+    pacman -Sy --noconfirm --needed rust
 
 RUN git clone --depth 1 "https://github.com/tgnthump/bootc.git" /tmp/bootc
 
@@ -46,7 +50,7 @@ RUN KERNEL_VERSION="$(ls -1 /usr/lib/modules | sort -V | tail -n 1)" && \
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
     pacman -Sy --noconfirm --needed \
-    btrfs-progs e2fsprogs xfsprogs dosfstools fuse-overlayfs \
+    btrfs-progs e2fsprogs xfsprogs dosfstools fuse-overlayfs fuse2 \
     skopeo \
     dbus \
     dbus-glib \
@@ -78,9 +82,12 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     waybar \
     otf-font-awesome \
     nautilus \
+    gnome-keyring \
+    seahorse \
     uwsm \
     libnewt \
     xdg-desktop-portal-hyprland \
+    xdg-desktop-portal-gtk \
     brightnessctl \
     playerctl \
     usbutils \
@@ -106,6 +113,9 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     ttf-jetbrains-mono-nerd \
     code \
     jq \
+    mise \
+    rustup \
+    github-cli \
     && pacman -Scc --noconfirm
 
 ADD rootfs/ /
@@ -126,6 +136,23 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     makepkg -s \
     ' && \
     pacman -U /home/build/1password/1password-*.tar.zst --noconfirm && \
+    rm -rf /home/build
+
+RUN --mount=type=cache,target=/var/cache/pacman/pkg \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
+    mkdir /home/build && \
+    chgrp nobody /home/build && \
+    chmod g+ws /home/build && \
+    setfacl -m u::rwx,g::rwx /home/build && \
+    setfacl -d --set u::rwx,g::rwx,o::- /home/build && \
+    runuser -u nobody -- bash -c '\
+    export GNUPGHOME=/home/build && \
+    cd /home/build && \
+    git clone https://aur.archlinux.org/jetbrains-toolbox.git && \
+    cd jetbrains-toolbox && \
+    makepkg -s \
+    ' && \
+    pacman -U /home/build/jetbrains-toolbox/jetbrains-toolbox-*.tar.zst --noconfirm && \
     rm -rf /home/build
 
 # Necessary for general behavior expected by image-based systems

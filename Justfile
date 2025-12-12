@@ -27,4 +27,13 @@ generate-bootable-image $base_dir=base_dir $filesystem=filesystem:
     just bootc install to-disk --composefs-backend --via-loopback /data/bootable.img --filesystem "${filesystem}" --wipe --bootloader systemd
 
 upgrade:
-    bootc switch --transport containers-storage localhost/{{image_name}}:{{image_tag}}
+    #!/usr/bin/run0 bash
+    set -euxo pipefail
+    tmpfile=""
+    trap 'rm -f "${tmpfile:-}"' EXIT
+    tmpfile="$(mktemp)"
+    podman build --iidfile "$tmpfile" -t arch-bootc:latest .
+    img_id="$(sed 's/^sha256://' "$tmpfile")"
+    echo "Built image: $img_id"
+    bootc switch --transport containers-storage "$img_id"
+    reboot

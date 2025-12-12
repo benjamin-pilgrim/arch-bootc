@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = jetbrains-toolbox
+
+[Action]
+Description = Fix jetbrains-toolbox permissions
+When = PostTransaction
+Exec = /usr/bin/bash -c 'find /opt/jetbrains-toolbox -type d -exec chmod 755 {} + && find /opt/jetbrains-toolbox -type f -exec chmod 644 {} + && chmod 755 /usr/bin/jetbrains-toolbox 2>/dev/null || true'
