@@ -58,12 +58,15 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     shadow \
     networkmanager \
     network-manager-applet \
+    openbsd-netcat \
     pipewire pipewire-alsa pipewire-pulse pipewire-jack pavucontrol \
     wireplumber \
     openssh \
     man \
     nano \
     vim \
+    unzip \
+    go-yq \
     wget \
     podman \
     just \
@@ -71,7 +74,6 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     hyprland \
     hyprpaper \
     hyprpicker \
-    hyprlauncher \
     hypridle \
     hyprlock \
     hyprpolkitagent \
@@ -115,6 +117,8 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     jq \
     mise \
     rustup \
+    go \
+    gobject-introspection \
     github-cli \
     && pacman -Scc --noconfirm
 
@@ -160,6 +164,33 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     ' && \
     pacman -U /home/makepkg/out/jetbrains-toolbox-*.pkg.tar.zst --noconfirm && \
     rm -f /home/makepkg/out/jetbrains-toolbox-*.pkg.tar.zst
+
+RUN --mount=type=cache,target=/var/cache/pacman/pkg \
+    --mount=type=cache,target=/usr/lib/pacman/sync \
+    runuser -u makepkg -- bash -c '\
+    set -euo pipefail && \
+    umask 022 && \
+    build_aur_pkg() { \
+        local pkg="$1" && \
+        ( \
+            set -euo pipefail && \
+            local workdir="$(mktemp -d)" && \
+            trap "rm -rf \"$workdir\"" EXIT && \
+            cd "$workdir" && \
+            git clone --depth 1 --single-branch "https://aur.archlinux.org/${pkg}.git" && \
+            cd "$pkg" && \
+            makepkg -s \
+        ); \
+    } && \
+    for pkg in walker elephant elephant-desktopapplications ; do \
+        build_aur_pkg "$pkg"; \
+    done \
+    ' && \
+    find /home/makepkg/out -maxdepth 1 -type f -name "*-debug-*.pkg.tar.zst" -delete && \
+    pacman -U /home/makepkg/out/*.pkg.tar.zst --noconfirm && \
+    rm -f /home/makepkg/out/{walker,elephant,elephant-desktopapplications}-*.pkg.tar.zst
+
+RUN chown root:root /usr/bin/newuidmap /usr/bin/newgidmap && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap
 
 # Necessary for general behavior expected by image-based systems
 RUN sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
