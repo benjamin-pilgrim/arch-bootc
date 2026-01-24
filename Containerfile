@@ -6,7 +6,7 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
     pacman -Syu --noconfirm --needed archlinux-keyring
 
-#bootc runtime + build deps
+#bootc runtime deps
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
     pacman -Sy --noconfirm --needed \
@@ -18,9 +18,9 @@ FROM base as bootc-build
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    pacman -Sy --noconfirm --needed rust
+    pacman -Sy --noconfirm --needed rust go-md2man
 
-RUN git clone --depth 1 "https://github.com/tgnthump/bootc.git" /tmp/bootc
+RUN git clone --depth 1 --branch v1.12.1 "https://github.com/bootc-dev/bootc.git" /tmp/bootc
 
 ENV DESTDIR=/sysroot
 RUN mkdir -p /sysroot
