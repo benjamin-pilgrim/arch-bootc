@@ -78,6 +78,8 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     hyprlock \
     hyprpolkitagent \
     swaync \
+    grim \
+    slurp \
     kitty \
     qt5-wayland \
     qt6-wayland \
@@ -120,6 +122,13 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     go \
     gobject-introspection \
     github-cli \
+    libqalculate \
+    fd \
+    imagemagick \
+    wl-clipboard \
+    libnotify \
+    ffmpeg4.4 \
+    chromium \
     && pacman -Scc --noconfirm
 
 ADD rootfs/ /
@@ -139,31 +148,8 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     umask 022 && \
     export GNUPGHOME="$HOME/.gnupg" && \
     install -d -m 700 "$GNUPGHOME" && \
-    curl -sS https://downloads.1password.com/linux/keys/1password.asc | gpg --import && \
-    workdir="$(mktemp -d)" && \
-    trap "rm -rf \"$workdir\"" EXIT && \
-    cd "$workdir" && \
-    git clone --depth 1 --single-branch https://aur.archlinux.org/1password.git && \
-    cd 1password && \
-    makepkg -s \
-    ' && \
-    pacman -U /home/makepkg/out/1password-*.pkg.tar.zst --noconfirm && \
-    rm -f /home/makepkg/out/1password-*.pkg.tar.zst
-
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
-    runuser -u makepkg -- bash -c '\
-    set -euo pipefail && \
-    umask 022 && \
-    workdir="$(mktemp -d)" && \
-    trap "rm -rf \"$workdir\"" EXIT && \
-    cd "$workdir" && \
-    git clone --depth 1 --single-branch https://aur.archlinux.org/jetbrains-toolbox.git && \
-    cd jetbrains-toolbox && \
-    makepkg -s \
-    ' && \
-    pacman -U /home/makepkg/out/jetbrains-toolbox-*.pkg.tar.zst --noconfirm && \
-    rm -f /home/makepkg/out/jetbrains-toolbox-*.pkg.tar.zst
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc | gpg --import \
+    '
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
@@ -182,13 +168,27 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
             makepkg -s \
         ); \
     } && \
-    for pkg in walker elephant elephant-desktopapplications ; do \
+    for pkg in \
+        1password \
+        1password-cli \
+        jetbrains-toolbox \
+        cloudflare-warp-bin \
+        walker \
+        hyprshot-git \
+        elephant \
+        elephant-desktopapplications \
+        elephant-calc \
+        elephant-runner \
+        elephant-files \
+        elephant-websearch \
+        elephant-clipboard \
+	parsec-bin; do \
         build_aur_pkg "$pkg"; \
     done \
     ' && \
     find /home/makepkg/out -maxdepth 1 -type f -name "*-debug-*.pkg.tar.zst" -delete && \
     pacman -U /home/makepkg/out/*.pkg.tar.zst --noconfirm && \
-    rm -f /home/makepkg/out/{walker,elephant,elephant-desktopapplications}-*.pkg.tar.zst
+    rm -f /home/makepkg/out/*.pkg.tar.zst
 
 RUN chown root:root /usr/bin/newuidmap /usr/bin/newgidmap && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap
 

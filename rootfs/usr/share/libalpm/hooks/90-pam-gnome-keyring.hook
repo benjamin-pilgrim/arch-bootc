@@ -1,0 +1,12 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = pambase
+Target = shadow
+
+[Action]
+Description = Ensure gnome-keyring PAM integration is present
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/pam-gnome-keyring-fixup
+NeedsTargets
