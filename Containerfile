@@ -1,6 +1,22 @@
+FROM docker.io/mikefarah/yq:4 AS manifest-gen
+COPY packages.toml /src/packages.toml
+RUN mkdir -p /tmp/out && \
+    yq -r '.official.bootc_runtime[]' /src/packages.toml > /tmp/out/packages-official-bootc-runtime.txt && \
+    yq -r '.official.bootc_build[]' /src/packages.toml > /tmp/out/packages-official-bootc-build.txt && \
+    yq -r '.official.kernel_runtime[]' /src/packages.toml > /tmp/out/packages-official-kernel-runtime.txt && \
+    yq -r '.official.system[]' /src/packages.toml > /tmp/out/packages-official-system.txt && \
+    yq -r '.aur.packages[]' /src/packages.toml > /tmp/out/packages-aur.txt && \
+    yq -r '.versions.bootc' /src/packages.toml > /tmp/out/bootc-version.txt && \
+    yq -o=json '.keys' /src/packages.toml > /tmp/out/keys.json
+
 FROM docker.io/archlinux/archlinux:latest AS base
 
 RUN mv /var/lib/pacman /usr/lib/pacman && echo "DBPath = /usr/lib/pacman/" >> /etc/pacman.conf
+
+COPY --from=manifest-gen /tmp/out/packages-official-bootc-runtime.txt /tmp/packages-official-bootc-runtime.txt
+COPY --from=manifest-gen /tmp/out/packages-official-bootc-build.txt /tmp/packages-official-bootc-build.txt
+COPY --from=manifest-gen /tmp/out/packages-official-kernel-runtime.txt /tmp/packages-official-kernel-runtime.txt
+COPY --from=manifest-gen /tmp/out/packages-official-system.txt /tmp/packages-official-system.txt
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
@@ -9,24 +25,26 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
 #bootc runtime deps
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    pacman -Sy --noconfirm --needed \
-    ostree \
-    dracut \
-    base-devel git
+    xargs -a /tmp/packages-official-bootc-runtime.txt -- pacman -Sy --noconfirm --needed
 
 FROM base as bootc-build
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    pacman -Sy --noconfirm --needed rust go-md2man
+    xargs -a /tmp/packages-official-bootc-build.txt -- pacman -Sy --noconfirm --needed
 
-RUN git clone --depth 1 --branch v1.12.1 "https://github.com/bootc-dev/bootc.git" /tmp/bootc
+COPY --from=manifest-gen /tmp/out/bootc-version.txt /tmp/bootc-version.txt
+RUN BOOTC_VERSION="$(cat /tmp/bootc-version.txt)" && \
+    git clone --depth 1 --branch "${BOOTC_VERSION}" "https://github.com/bootc-dev/bootc.git" /tmp/bootc
 
 ENV DESTDIR=/sysroot
 RUN mkdir -p /sysroot
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/tmp/bootc/target \
+    CARGO_HOME=/root/.cargo \
+    CARGO_TARGET_DIR=/tmp/bootc/target \
     make -C /tmp/bootc bin install-all
 
 FROM base AS final
@@ -35,10 +53,7 @@ COPY --from=bootc-build /sysroot/ /
 #dracut runtime deps
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    pacman -Sy --noconfirm --needed \
-    linux \
-    linux-firmware \
-    intel-ucode
+    xargs -a /tmp/packages-official-kernel-runtime.txt -- pacman -Sy --noconfirm --needed
 
 # Regression with newer dracut broke this
 ADD rootfs/usr/lib/dracut /usr/lib/dracut
@@ -49,146 +64,35 @@ RUN KERNEL_VERSION="$(ls -1 /usr/lib/modules | sort -V | tail -n 1)" && \
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    pacman -Sy --noconfirm --needed \
-    btrfs-progs e2fsprogs xfsprogs dosfstools fuse-overlayfs fuse2 \
-    skopeo \
-    dbus \
-    dbus-glib \
-    glib2 \
-    shadow \
-    networkmanager \
-    network-manager-applet \
-    openbsd-netcat \
-    pipewire pipewire-alsa pipewire-pulse pipewire-jack pavucontrol \
-    wireplumber \
-    openssh \
-    man \
-    nano \
-    vim \
-    unzip \
-    go-yq \
-    wget \
-    podman \
-    just \
-    git \
-    hyprland \
-    hyprpaper \
-    hyprpicker \
-    hypridle \
-    hyprlock \
-    hyprpolkitagent \
-    swaync \
-    grim \
-    slurp \
-    kitty \
-    qt5-wayland \
-    qt6-wayland \
-    waybar \
-    otf-font-awesome \
-    nautilus \
-    gnome-keyring \
-    seahorse \
-    uwsm \
-    libnewt \
-    xdg-desktop-portal-hyprland \
-    xdg-desktop-portal-gtk \
-    brightnessctl \
-    playerctl \
-    usbutils \
-    fprintd \
-    firefox \
-    mesa \
-    intel-media-driver \
-    intel-media-sdk \
-    vulkan-intel \
-    intel-gpu-tools \
-    libva-utils \
-    vdpauinfo \
-    vulkan-tools \
-    chrony \
-    throttled \
-    fwupd \
-    tlp \
-    flatpak \
-    flatpak-builder \
-    bluez \
-    bluez-utils \
-    blueman \
-    ttf-jetbrains-mono-nerd \
-    code \
-    jq \
-    mise \
-    rustup \
-    go \
-    gobject-introspection \
-    github-cli \
-    libqalculate \
-    fd \
-    imagemagick \
-    wl-clipboard \
-    libnotify \
-    ffmpeg4.4 \
-    chromium \
-    && pacman -Scc --noconfirm
+    xargs -a /tmp/packages-official-system.txt -- pacman -Sy --noconfirm --needed && \
+    pacman -Scc --noconfirm
 
 ADD rootfs/ /
 
-RUN useradd --create-home --shell /bin/bash --user-group makepkg && \
+RUN useradd --uid 1000 --create-home --shell /bin/bash --user-group makepkg && \
     install -d -o makepkg -g makepkg /home/makepkg/.config/pacman && \
     install -d -m 700 -o makepkg -g makepkg /home/makepkg/.gnupg && \
-    install -d -o makepkg -g makepkg /home/makepkg/out && \
-    printf 'MAKEFLAGS="-j%s"\nPKGDEST="/home/makepkg/out"\n' "$(nproc)" > /home/makepkg/.config/pacman/makepkg.conf && \
+    printf 'MAKEFLAGS="-j%s"\nPKGDEST="/home/makepkg/cache/pkg"\nSRCDEST="/home/makepkg/cache/src"\nBUILDDIR="/home/makepkg/cache/build"\n' "$(nproc)" > /home/makepkg/.config/pacman/makepkg.conf && \
     runuser -u makepkg -- sh -c 'printf "keyserver-options auto-key-retrieve\n" > ~/.gnupg/gpg.conf' && \
     chmod 600 /home/makepkg/.gnupg/gpg.conf
 
+COPY --from=manifest-gen /tmp/out/keys.json /tmp/keys.json
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    runuser -u makepkg -- bash -c '\
-    set -euo pipefail && \
-    umask 022 && \
-    export GNUPGHOME="$HOME/.gnupg" && \
-    install -d -m 700 "$GNUPGHOME" && \
-    curl -sS https://downloads.1password.com/linux/keys/1password.asc | gpg --import \
-    '
+    runuser -u makepkg -- bash /usr/local/libexec/import-keys.sh /tmp/keys.json
+
+COPY --from=manifest-gen /tmp/out/packages-aur.txt /tmp/packages-aur.txt
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    runuser -u makepkg -- bash -c '\
-    set -euo pipefail && \
-    umask 022 && \
-    build_aur_pkg() { \
-        local pkg="$1" && \
-        ( \
-            set -euo pipefail && \
-            local workdir="$(mktemp -d)" && \
-            trap "rm -rf \"$workdir\"" EXIT && \
-            cd "$workdir" && \
-            git clone --depth 1 --single-branch "https://aur.archlinux.org/${pkg}.git" && \
-            cd "$pkg" && \
-            makepkg -s \
-        ); \
-    } && \
-    for pkg in \
-        1password \
-        1password-cli \
-        jetbrains-toolbox \
-        cloudflare-warp-bin \
-        walker \
-        hyprshot-git \
-        elephant \
-        elephant-desktopapplications \
-        elephant-calc \
-        elephant-runner \
-        elephant-files \
-        elephant-websearch \
-        elephant-clipboard \
-	parsec-bin; do \
-        build_aur_pkg "$pkg"; \
-    done \
-    ' && \
-    find /home/makepkg/out -maxdepth 1 -type f -name "*-debug-*.pkg.tar.zst" -delete && \
-    pacman -U /home/makepkg/out/*.pkg.tar.zst --noconfirm && \
-    rm -f /home/makepkg/out/*.pkg.tar.zst
+    --mount=type=cache,target=/home/makepkg/cache/aur,uid=1000,gid=1000,mode=0775 \
+    --mount=type=cache,target=/home/makepkg/cache/src,uid=1000,gid=1000,mode=0775 \
+    --mount=type=cache,target=/home/makepkg/cache/build,uid=1000,gid=1000,mode=0775 \
+    --mount=type=cache,target=/home/makepkg/cache/pkg,uid=1000,gid=1000,mode=0775 \
+    runuser -u makepkg -- bash /usr/local/libexec/build-aur.sh /tmp/packages-aur.txt && \
+    xargs -a /home/makepkg/cache/pkg/.install-list -- pacman -U --noconfirm
+
+RUN userdel makepkg && groupdel makepkg || true
 
 RUN chown root:root /usr/bin/newuidmap /usr/bin/newgidmap && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap
 
@@ -199,11 +103,7 @@ RUN sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
     ln -s var/opt /opt && \
     ln -s var/roothome /root && \
     ln -s var/home /home && \
-    ln -s sysroot/ostree /ostree && \
-    echo "$(for dir in opt usrlocal home srv mnt ; do echo "d /var/$dir 0755 root root -" ; done)" | tee -a /usr/lib/tmpfiles.d/bootc-base-dirs.conf && \
-    echo "d /var/roothome 0700 root root -" | tee -a /usr/lib/tmpfiles.d/bootc-base-dirs.conf && \
-    echo "d /run/media 0755 root root -" | tee -a /usr/lib/tmpfiles.d/bootc-base-dirs.conf && \
-    printf "[composefs]\nenabled = yes\n[sysroot]\nreadonly = true\n" | tee "/usr/lib/ostree/prepare-root.conf"
+    ln -s sysroot/ostree /ostree
 
 # Discard trigger files for systemd-firstboot
 RUN rm /etc/locale.conf /var/log/pacman.log

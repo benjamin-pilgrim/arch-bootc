@@ -6,6 +6,12 @@ filesystem := env("BUILD_FILESYSTEM", "ext4")
 build-containerfile $image_name=image_name:
     run0 podman build -t "${image_name}:latest" .
 
+build-log $image_name=image_name $image_tag=image_tag:
+    run0 sh -c 'podman build -t "{{image_name}}:{{image_tag}}" . 2>&1 | tee build.log'
+
+build-log-ts $image_name=image_name $image_tag=image_tag:
+    run0 sh -c 'podman build -t "{{image_name}}:{{image_tag}}" . 2>&1 | awk '\''{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }'\'' | tee build.log'
+
 bootc *ARGS:
     run0 podman run \
         --rm --privileged --pid=host \
