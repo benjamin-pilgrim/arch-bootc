@@ -2,15 +2,17 @@ image_name := env("BUILD_IMAGE_NAME", "arch-bootc")
 image_tag := env("BUILD_IMAGE_TAG", "latest")
 base_dir := env("BUILD_BASE_DIR", ".")
 filesystem := env("BUILD_FILESYSTEM", "ext4")
+build_flags := env("BUILD_FLAGS", "--layers=false")
+build_tmpdir := env("BUILD_TMPDIR", "/var/tmp/arch-bootc-build")
 
 build-containerfile $image_name=image_name:
-    run0 podman build -t "${image_name}:latest" .
+    run0 sh -c 'mkdir -p "{{build_tmpdir}}" && TMPDIR="{{build_tmpdir}}" podman build {{build_flags}} -t "${image_name}:latest" .'
 
 build-log $image_name=image_name $image_tag=image_tag:
-    run0 sh -c 'podman build -t "{{image_name}}:{{image_tag}}" . 2>&1 | tee build.log'
+    run0 sh -c 'mkdir -p "{{build_tmpdir}}" && TMPDIR="{{build_tmpdir}}" podman build {{build_flags}} -t "{{image_name}}:{{image_tag}}" . 2>&1 | tee build.log'
 
 build-log-ts $image_name=image_name $image_tag=image_tag:
-    run0 sh -c 'podman build -t "{{image_name}}:{{image_tag}}" . 2>&1 | awk '\''{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }'\'' | tee build.log'
+    run0 sh -c 'mkdir -p "{{build_tmpdir}}" && TMPDIR="{{build_tmpdir}}" podman build {{build_flags}} -t "{{image_name}}:{{image_tag}}" . 2>&1 | awk '\''{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }'\'' | tee build.log'
 
 bootc *ARGS:
     run0 podman run \
@@ -38,7 +40,8 @@ upgrade:
     tmpfile=""
     trap 'rm -f "${tmpfile:-}"' EXIT
     tmpfile="$(mktemp)"
-    podman build --iidfile "$tmpfile" -t arch-bootc:latest .
+    mkdir -p "{{build_tmpdir}}"
+    TMPDIR="{{build_tmpdir}}" podman build {{build_flags}} --iidfile "$tmpfile" -t arch-bootc:latest .
     img_id="$(sed 's/^sha256://' "$tmpfile")"
     echo "Built image: $img_id"
     bootc switch --transport containers-storage "$img_id"

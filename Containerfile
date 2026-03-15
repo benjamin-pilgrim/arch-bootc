@@ -42,10 +42,14 @@ RUN mkdir -p /sysroot
 
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/tmp/bootc/target \
     CARGO_HOME=/root/.cargo \
-    CARGO_TARGET_DIR=/tmp/bootc/target \
-    make -C /tmp/bootc bin install-all
+    CARGO_INCREMENTAL=0 \
+    CARGO_BUILD_JOBS=2 \
+    CARGO_PROFILE_DEV_OPT_LEVEL=0 \
+    CARGO_PROFILE_DEV_DEBUG=0 \
+    RUSTFLAGS="-C debuginfo=0" \
+    make -C /tmp/bootc bin install-all && \
+    rm -rf /tmp/bootc/target
 
 FROM base AS final
 COPY --from=bootc-build /sysroot/ /
@@ -89,10 +93,9 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/home/makepkg/cache/src,uid=1000,gid=1000,mode=0775 \
     --mount=type=cache,target=/home/makepkg/cache/build,uid=1000,gid=1000,mode=0775 \
     --mount=type=cache,target=/home/makepkg/cache/pkg,uid=1000,gid=1000,mode=0775 \
-    runuser -u makepkg -- bash /usr/local/libexec/build-aur.sh /tmp/packages-aur.txt && \
-    xargs -a /home/makepkg/cache/pkg/.install-list -- pacman -U --noconfirm
+    bash /usr/local/libexec/build-aur.sh /tmp/packages-aur.txt
 
-RUN userdel makepkg && groupdel makepkg || true
+RUN userdel makepkg
 
 RUN chown root:root /usr/bin/newuidmap /usr/bin/newgidmap && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap
 
@@ -106,7 +109,7 @@ RUN sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
     ln -s sysroot/ostree /ostree
 
 # Discard trigger files for systemd-firstboot
-RUN rm /etc/locale.conf /var/log/pacman.log
+RUN rm -f /etc/locale.conf /var/log/pacman.log
 
 RUN bootc container lint
 RUN date > /build.time
