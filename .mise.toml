@@ -167,6 +167,7 @@ qemu_trace="${BOOTC_VM_QEMU_TRACE:-0}"
 inject_loader_kargs="${BOOTC_VM_INJECT_LOADER_KARGS:-1}"
 ssh_banner_timeout="${BOOTC_VM_SSH_BANNER_TIMEOUT_S:-$boot_timeout}"
 wait_status_interval="${BOOTC_VM_WAIT_STATUS_INTERVAL_S:-10}"
+log_capture_path="${BOOTC_VM_LOG_CAPTURE_PATH:-}"
 use_systemd_ssh_generator="${BOOTC_VM_USE_SYSTEMD_SSH_GENERATOR:-1}"
 systemd_ssh_listen="${BOOTC_VM_SYSTEMD_SSH_LISTEN:-0.0.0.0:22}"
 case "$vm_log_level" in
@@ -297,6 +298,7 @@ trace_file="$(mktemp "${TMPDIR:-/tmp}/qemu-vm-trace.XXXXXX.log")"
 known_hosts_file="$(mktemp "${TMPDIR:-/tmp}/qemu-vm-known-hosts.XXXXXX")"
 ssh_key_dir=""
 ssh_private_key=""
+log_capture_pid=""
 cleanup_ran=0
 cleanup() {
   if [ "${cleanup_ran:-0}" = "1" ]; then
@@ -322,6 +324,10 @@ cleanup() {
   fi
   if [ -n "${ssh_key_dir:-}" ] && [ -d "${ssh_key_dir:-}" ]; then
     rm -rf "$ssh_key_dir" || true
+  fi
+  if [ -n "${log_capture_pid:-}" ] && kill -0 "$log_capture_pid" 2>/dev/null; then
+    kill "$log_capture_pid" >/dev/null 2>&1 || true
+    wait "$log_capture_pid" >/dev/null 2>&1 || true
   fi
   echo "qemu vm log: $log_file"
   if [ "${qemu_trace:-0}" = "1" ]; then
@@ -390,6 +396,10 @@ if [ "$follow_qemu_log" = "1" ]; then
     | perl -ne 'BEGIN { $| = 1 } s/\e\[[0-9;?]*[ -\/]*[@-~]//g; s/\r//g; print if /\S/' \
     | sed -u 's/^/[qemu] /' &
   log_tail_pid="$!"
+  if [ -n "$log_capture_path" ]; then
+    tail -n +0 -F "$log_file" >"$log_capture_path" &
+    log_capture_pid="$!"
+  fi
 fi
 
 if ! command -v ssh-keyscan >/dev/null 2>&1; then

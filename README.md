@@ -49,6 +49,9 @@ BOOTC_VM_LOG_LEVEL=quiet mise run test-smoke-vm-local
 BOOTC_VM_LOG_LEVEL=normal mise run test-smoke-vm-local
 BOOTC_VM_LOG_LEVEL=debug mise run test-smoke-vm-local
 
+# Optional: mirror the qemu log to a file so you can grep it live
+BOOTC_VM_LOG_CAPTURE_PATH=/tmp/qemu-vm-smoke-follow.log mise run test-smoke-vm-local
+
 # Optional: disable injected serial kernel logs or fully customize injected kernel cmdline
 BOOTC_VM_SERIAL_KERNEL_LOG=0 mise run test-smoke-vm-local
 BOOTC_VM_KERNEL_CMDLINE='console=ttyS0 loglevel=7' mise run test-smoke-vm-local
