@@ -1,2 +1,6 @@
 cosign.key
 *.img
+*.img.raw
+build.log
+mkosi.crt
+mkosi.key

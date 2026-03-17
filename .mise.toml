@@ -1,0 +1,506 @@
+[tools]
+"aqua:bats-core/bats-core" = "1.12.0"
+
+[tasks.build-containerfile]
+description = "Build image with Containerfile"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+build_flags="${BUILD_FLAGS:---layers=false}"
+build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
+
+mkdir -p "$build_tmpdir"
+if command -v run0 >/dev/null 2>&1; then
+  run0 sh -c 'TMPDIR="'$build_tmpdir'" podman build '$build_flags' -t "'$image_name':latest" .'
+else
+  TMPDIR="$build_tmpdir" podman build $build_flags -t "$image_name:latest" .
+fi
+'''
+
+[tasks.build-log]
+description = "Build image and write build.log"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+build_flags="${BUILD_FLAGS:---layers=false}"
+build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
+
+mkdir -p "$build_tmpdir"
+if command -v run0 >/dev/null 2>&1; then
+  run0 sh -c 'TMPDIR="'$build_tmpdir'" podman build '$build_flags' -t "'$image_name':'$image_tag'" . 2>&1 | tee build.log'
+else
+  TMPDIR="$build_tmpdir" podman build $build_flags -t "$image_name:$image_tag" . 2>&1 | tee build.log
+fi
+'''
+
+[tasks.build-log-ts]
+description = "Build image and write timestamped build.log"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+build_flags="${BUILD_FLAGS:---layers=false}"
+build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
+
+mkdir -p "$build_tmpdir"
+if command -v run0 >/dev/null 2>&1; then
+  run0 sh -c 'TMPDIR="'$build_tmpdir'" podman build '$build_flags' -t "'$image_name':'$image_tag'" . 2>&1 | awk '\''{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }'\'' | tee build.log'
+else
+  TMPDIR="$build_tmpdir" podman build $build_flags -t "$image_name:$image_tag" . 2>&1 | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee build.log
+fi
+'''
+
+[tasks.bootc]
+description = "Run bootc in the built image (pass args after --)"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+base_dir="${BUILD_BASE_DIR:-.}"
+if [ "${image_name#*/}" = "$image_name" ]; then
+  image_ref="localhost/$image_name:$image_tag"
+else
+  image_ref="$image_name:$image_tag"
+fi
+
+runner=""
+if command -v run0 >/dev/null 2>&1; then
+  runner="run0"
+fi
+
+selinux_mount=""
+if [ -d /sys/fs/selinux ]; then
+  selinux_mount="-v /sys/fs/selinux:/sys/fs/selinux"
+fi
+
+$runner sh -c '
+  set -eu
+  podman run \
+    --rm --privileged --pid=host \
+    -it \
+    '"$selinux_mount"' \
+    -v /etc/containers:/etc/containers:Z \
+    -v /var/lib/containers:/var/lib/containers:Z \
+    -v /dev:/dev \
+    -e RUST_LOG=debug \
+    -v "'"$base_dir"':/data" \
+    --security-opt label=type:unconfined_t \
+    "'"$image_ref"'" bootc "$@"
+' -- "$@"
+'''
+
+[tasks.generate-bootable-image]
+description = "Install built image to bootable.img"
+run = '''
+set -eu
+base_dir="${BUILD_BASE_DIR:-.}"
+filesystem="${BUILD_FILESYSTEM:-ext4}"
+
+if [ ! -e "$base_dir/bootable.img" ] ; then
+  fallocate -l 20G "$base_dir/bootable.img"
+fi
+mise run bootc -- install to-disk --composefs-backend --via-loopback /data/bootable.img --filesystem "$filesystem" --wipe --bootloader systemd
+'''
+
+[tasks.upgrade]
+description = "Build image and switch local host via bootc"
+run = '''
+set -eux
+build_flags="${BUILD_FLAGS:---layers=false}"
+build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
+
+tmpfile=""
+trap 'rm -f "${tmpfile:-}"' EXIT
+tmpfile="$(mktemp)"
+mkdir -p "$build_tmpdir"
+TMPDIR="$build_tmpdir" podman build $build_flags --iidfile "$tmpfile" -t arch-bootc:latest .
+img_id="$(sed 's/^sha256://' "$tmpfile")"
+echo "Built image: $img_id"
+bootc switch --transport containers-storage "$img_id"
+reboot
+'''
+
+[tasks.test-structure]
+description = "Run podman-native structure tests against built image"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+IMAGE_UNDER_TEST="$image_name:$image_tag" mise exec -- bats tests/structure/hypr-structure.bats
+'''
+
+[tasks.test-smoke-container]
+description = "Run container smoke tests against built image"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+IMAGE_UNDER_TEST="$image_name:$image_tag" mise exec -- bats tests/smoke/container-hypr.bats
+'''
+
+[tasks.test-smoke-vm]
+description = "Run VM smoke tests over SSH (requires BOOTC_VM_SSH)"
+run = '''
+set -eu
+mise exec -- bats tests/smoke/vm-bootc.bats
+'''
+
+[tasks.test-smoke-vm-local]
+description = "Boot local bootable.img with qemu and run VM smoke tests"
+run = '''
+set -eu
+base_dir="${BUILD_BASE_DIR:-.}"
+bootable="${BOOTABLE_IMAGE_PATH:-$base_dir/bootable.img}"
+boot_timeout="${BOOTC_VM_BOOT_TIMEOUT_S:-300}"
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-local}"
+qemu_bin="${QEMU_BIN:-qemu-system-x86_64}"
+ssh_port="${BOOTC_VM_SSH_PORT:-2222}"
+ssh_user="${BOOTC_VM_SSH_USER:-root}"
+qemu_mem="${BOOTC_VM_QEMU_MEM:-4096}"
+qemu_smp="${BOOTC_VM_QEMU_SMP:-4}"
+follow_qemu_log="${BOOTC_VM_FOLLOW_LOG:-1}"
+serial_kernel_log="${BOOTC_VM_SERIAL_KERNEL_LOG:-1}"
+vm_log_level="${BOOTC_VM_LOG_LEVEL:-quiet}"
+qemu_trace="${BOOTC_VM_QEMU_TRACE:-0}"
+inject_loader_kargs="${BOOTC_VM_INJECT_LOADER_KARGS:-1}"
+ssh_banner_timeout="${BOOTC_VM_SSH_BANNER_TIMEOUT_S:-$boot_timeout}"
+wait_status_interval="${BOOTC_VM_WAIT_STATUS_INTERVAL_S:-10}"
+use_systemd_ssh_generator="${BOOTC_VM_USE_SYSTEMD_SSH_GENERATOR:-1}"
+systemd_ssh_listen="${BOOTC_VM_SYSTEMD_SSH_LISTEN:-0.0.0.0:22}"
+case "$vm_log_level" in
+  quiet)
+    default_kernel_cmdline='quiet console=ttyS0,115200 console=tty0 loglevel=3 rd.systemd.show_status=0 systemd.show_status=0 rd.udev.log_level=3 udev.log_level=3 systemd.log_level=notice'
+    ;;
+  normal)
+    default_kernel_cmdline='console=ttyS0,115200 console=tty0 loglevel=4 rd.systemd.show_status=auto systemd.show_status=auto rd.udev.log_level=4 udev.log_level=4 systemd.log_level=info'
+    ;;
+  debug)
+    default_kernel_cmdline='console=ttyS0,115200 console=tty0 earlycon=uart,io,0x3f8,115200 ignore_loglevel loglevel=8 printk.time=1 rd.systemd.show_status=1 systemd.log_level=debug systemd.log_target=console rd.debug'
+    ;;
+  *)
+    echo "Invalid BOOTC_VM_LOG_LEVEL='$vm_log_level' (expected: quiet|normal|debug)"
+    exit 1
+    ;;
+esac
+vm_kernel_cmdline="${BOOTC_VM_KERNEL_CMDLINE:-$default_kernel_cmdline}"
+effective_kernel_cmdline="$vm_kernel_cmdline"
+if [ "$serial_kernel_log" != "1" ]; then
+  effective_kernel_cmdline="$(printf '%s\n' "$effective_kernel_cmdline" | sed -E 's/(^| )console=ttyS0[^ ]*//g; s/(^| )earlycon=[^ ]+//g; s/[[:space:]]+/ /g; s/^ //; s/ $//')"
+fi
+if [ "$use_systemd_ssh_generator" = "1" ]; then
+  effective_kernel_cmdline="$effective_kernel_cmdline systemd.ssh_auto=1 systemd.ssh_listen=$systemd_ssh_listen"
+fi
+strip_managed_kargs() {
+  printf '%s\n' "$1" | sed -E '
+    s/(^| )quiet($| )/ /g;
+    s/(^| )console=ttyS0[^ ]*//g;
+    s/(^| )console=tty0($| )/ /g;
+    s/(^| )earlycon=[^ ]+//g;
+    s/(^| )ignore_loglevel($| )/ /g;
+    s/(^| )loglevel=[^ ]+//g;
+    s/(^| )printk\.time=[^ ]+//g;
+    s/(^| )rd\.systemd\.show_status=[^ ]+//g;
+    s/(^| )systemd\.show_status=[^ ]+//g;
+    s/(^| )systemd\.log_level=[^ ]+//g;
+    s/(^| )systemd\.log_target=[^ ]+//g;
+    s/(^| )rd\.debug($| )/ /g;
+    s/(^| )rd\.udev\.log_level=[^ ]+//g;
+    s/(^| )udev\.log_level=[^ ]+//g;
+    s/(^| )systemd\.ssh_auto=[^ ]+//g;
+    s/(^| )systemd\.ssh_listen=[^ ]+//g;
+    s/[[:space:]]+/ /g;
+    s/^ //;
+    s/ $//
+  '
+}
+if [ "${image_name#*/}" = "$image_name" ]; then
+  image_ref="localhost/$image_name:$image_tag"
+else
+  image_ref="$image_name:$image_tag"
+fi
+
+if ! command -v "$qemu_bin" >/dev/null 2>&1; then
+  echo "$qemu_bin is required for test-smoke-vm-local"
+  echo "Install qemu-system-x86 (Ubuntu) or qemu-full/qemu-desktop (Arch) and retry."
+  exit 1
+fi
+
+if ! podman image exists "$image_ref"; then
+  echo "Image $image_ref not found; building it now..."
+  BUILD_IMAGE_NAME="$image_name" BUILD_IMAGE_TAG="$image_tag" mise run build-log
+fi
+
+if [ ! -f "$bootable" ]; then
+  echo "Bootable image not found at $bootable; generating one..."
+  BUILD_IMAGE_NAME="$image_name" BUILD_IMAGE_TAG="$image_tag" mise run generate-bootable-image
+fi
+
+if [ "$inject_loader_kargs" = "1" ]; then
+  run_as_root=""
+  if [ "$(id -u)" -ne 0 ]; then
+    run_as_root="sudo"
+  fi
+
+  loopdev="$($run_as_root losetup -fP --show "$bootable")"
+  esp_mount="$(mktemp -d "${TMPDIR:-/tmp}/esp-mount.XXXXXX")"
+  $run_as_root mount "${loopdev}p2" "$esp_mount"
+  for entry in "$esp_mount"/loader/entries/*.conf; do
+    [ -f "$entry" ] || continue
+    current_opts="$($run_as_root sed -n 's/^options //p' "$entry")"
+    base_opts="$(strip_managed_kargs "$current_opts")"
+    new_opts="$base_opts"
+    if [ -n "$effective_kernel_cmdline" ]; then
+      if [ -n "$new_opts" ]; then
+        new_opts="$new_opts $effective_kernel_cmdline"
+      else
+        new_opts="$effective_kernel_cmdline"
+      fi
+    fi
+    escaped_new_opts="$(printf '%s\n' "$new_opts" | sed -e 's/[&|]/\\&/g')"
+    if $run_as_root grep -q '^options ' "$entry"; then
+      $run_as_root sed -i "s|^options .*$|options $escaped_new_opts|" "$entry"
+    else
+      printf 'options %s\n' "$new_opts" | $run_as_root tee -a "$entry" >/dev/null
+    fi
+  done
+  $run_as_root umount "$esp_mount"
+  rmdir "$esp_mount"
+  $run_as_root losetup -d "$loopdev"
+fi
+
+if ss -ltn "( sport = :$ssh_port )" | grep -q LISTEN; then
+  echo "SSH forward port $ssh_port is already in use; set BOOTC_VM_SSH_PORT to another port."
+  exit 1
+fi
+
+ovmf_code=""
+ovmf_vars=""
+for pair in \
+  "/usr/share/OVMF/OVMF_CODE.fd:/usr/share/OVMF/OVMF_VARS.fd" \
+  "/usr/share/OVMF/OVMF_CODE_4M.fd:/usr/share/OVMF/OVMF_VARS_4M.fd" \
+  "/usr/share/edk2/ovmf/OVMF_CODE.fd:/usr/share/edk2/ovmf/OVMF_VARS.fd" \
+  "/usr/share/edk2-ovmf/x64/OVMF_CODE.fd:/usr/share/edk2-ovmf/x64/OVMF_VARS.fd"
+do
+  code_path="${pair%%:*}"
+  vars_path="${pair##*:}"
+  if [ -f "$code_path" ] && [ -f "$vars_path" ]; then
+    ovmf_code="$code_path"
+    ovmf_vars="$vars_path"
+    break
+  fi
+done
+
+log_file="$(mktemp "${TMPDIR:-/tmp}/qemu-vm-smoke.XXXXXX.log")"
+trace_file="$(mktemp "${TMPDIR:-/tmp}/qemu-vm-trace.XXXXXX.log")"
+known_hosts_file="$(mktemp "${TMPDIR:-/tmp}/qemu-vm-known-hosts.XXXXXX")"
+ssh_key_dir=""
+ssh_private_key=""
+cleanup_ran=0
+cleanup() {
+  if [ "${cleanup_ran:-0}" = "1" ]; then
+    return
+  fi
+  cleanup_ran=1
+  if [ -n "${log_tail_pid:-}" ] && kill -0 "$log_tail_pid" 2>/dev/null; then
+    kill "$log_tail_pid" >/dev/null 2>&1 || true
+    wait "$log_tail_pid" >/dev/null 2>&1 || true
+  fi
+  if [ -n "${vm_pid:-}" ] && kill -0 "$vm_pid" 2>/dev/null; then
+    kill "$vm_pid" >/dev/null 2>&1 || true
+    wait "$vm_pid" >/dev/null 2>&1 || true
+  fi
+  if [ -n "${ovmf_vars_runtime:-}" ] && [ -f "${ovmf_vars_runtime:-}" ]; then
+    rm -f "$ovmf_vars_runtime" || true
+  fi
+  if [ -n "${kernel_cmdline_file:-}" ] && [ -f "${kernel_cmdline_file:-}" ]; then
+    rm -f "$kernel_cmdline_file" || true
+  fi
+  if [ -n "${known_hosts_file:-}" ] && [ -f "${known_hosts_file:-}" ]; then
+    rm -f "$known_hosts_file" || true
+  fi
+  if [ -n "${ssh_key_dir:-}" ] && [ -d "${ssh_key_dir:-}" ]; then
+    rm -rf "$ssh_key_dir" || true
+  fi
+  echo "qemu vm log: $log_file"
+  if [ "${qemu_trace:-0}" = "1" ]; then
+    echo "qemu trace log: $trace_file"
+  else
+    rm -f "$trace_file" || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+set -- "$qemu_bin" \
+  -machine q35,accel=kvm:tcg \
+  -m "$qemu_mem" \
+  -smp "$qemu_smp" \
+  -display none \
+  -monitor none \
+  -serial stdio \
+  -boot order=c \
+  -object rng-random,id=rng0,filename=/dev/urandom \
+  -device virtio-rng-pci,rng=rng0 \
+  -netdev "user,id=net0,hostfwd=tcp::${ssh_port}-:22" \
+  -device virtio-net-pci,netdev=net0,bootindex=2 \
+  -drive "if=none,id=bootdisk,format=raw,file=$bootable" \
+  -device ich9-ahci,id=ahci \
+  -device ide-hd,drive=bootdisk,bus=ahci.0,bootindex=1
+
+if [ "$use_systemd_ssh_generator" = "1" ]; then
+  if ! command -v ssh-keygen >/dev/null 2>&1; then
+    echo "ssh-keygen is required for systemd-ssh-generator VM access (install openssh-client)."
+    exit 1
+  fi
+  ssh_key_dir="$(mktemp -d "${TMPDIR:-/tmp}/qemu-vm-key.XXXXXX")"
+  ssh_private_key="$ssh_key_dir/id_ed25519"
+  ssh-keygen -q -t ed25519 -N '' -C arch-bootc-vm-smoke -f "$ssh_private_key"
+  set -- "$@" \
+    -fw_cfg "name=opt/io.systemd.credentials/ssh.authorized_keys.root,file=$ssh_private_key.pub"
+fi
+
+if [ -n "$ovmf_code" ] && [ -n "$ovmf_vars" ]; then
+  ovmf_vars_runtime="$(mktemp "${TMPDIR:-/tmp}/OVMF_VARS.XXXXXX.fd")"
+  cp "$ovmf_vars" "$ovmf_vars_runtime"
+  set -- "$@" \
+    -drive "if=pflash,format=raw,readonly=on,file=$ovmf_code" \
+    -drive "if=pflash,format=raw,file=$ovmf_vars_runtime"
+fi
+
+if [ "$serial_kernel_log" = "1" ] && [ "$inject_loader_kargs" != "1" ]; then
+  kernel_cmdline_file="$(mktemp "${TMPDIR:-/tmp}/qemu-kcmdline.XXXXXX")"
+  printf '%s\n' "$effective_kernel_cmdline" >"$kernel_cmdline_file"
+  set -- "$@" \
+    -fw_cfg "name=opt/org.systemd.stub.kernel-cmdline,file=$kernel_cmdline_file"
+fi
+
+if [ "$qemu_trace" = "1" ]; then
+  set -- "$@" \
+    -d guest_errors,cpu_reset \
+    -D "$trace_file" \
+    -no-reboot
+fi
+
+"$@" >"$log_file" 2>&1 &
+vm_pid="$!"
+
+if [ "$follow_qemu_log" = "1" ]; then
+  tail -n +1 -F "$log_file" \
+    | perl -ne 'BEGIN { $| = 1 } s/\e\[[0-9;?]*[ -\/]*[@-~]//g; s/\r//g; print if /\S/' \
+    | sed -u 's/^/[qemu] /' &
+  log_tail_pid="$!"
+fi
+
+if ! command -v ssh-keyscan >/dev/null 2>&1; then
+  echo "ssh-keyscan is required for vm SSH readiness checks (install openssh-client)."
+  kill "$vm_pid" >/dev/null 2>&1 || true
+  wait "$vm_pid" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+echo "Waiting for SSH banner on 127.0.0.1:$ssh_port (timeout: ${ssh_banner_timeout}s)..."
+ssh_wait_start="$(date +%s)"
+ssh_wait_last_status="$ssh_wait_start"
+while true; do
+  if ssh-keyscan -T 2 -p "$ssh_port" 127.0.0.1 >/dev/null 2>&1; then
+    echo "SSH banner is available on 127.0.0.1:$ssh_port"
+    break
+  fi
+
+  if ! kill -0 "$vm_pid" 2>/dev/null; then
+    echo "qemu exited before SSH banner became available"
+    tail -n 200 "$log_file" || true
+    exit 1
+  fi
+
+  ssh_wait_now="$(date +%s)"
+  if [ $((ssh_wait_now - ssh_wait_start)) -ge "$ssh_banner_timeout" ]; then
+    echo "Timed out waiting for SSH banner on 127.0.0.1:$ssh_port"
+    tail -n 200 "$log_file" || true
+    kill "$vm_pid" >/dev/null 2>&1 || true
+    wait "$vm_pid" >/dev/null 2>&1 || true
+    exit 1
+  fi
+  if [ "$wait_status_interval" -gt 0 ] && [ $((ssh_wait_now - ssh_wait_last_status)) -ge "$wait_status_interval" ]; then
+    echo "Still waiting for SSH banner on 127.0.0.1:$ssh_port..."
+    ssh_wait_last_status="$ssh_wait_now"
+  fi
+
+  sleep 2
+done
+
+ssh_extra_opts="${BOOTC_VM_SSH_EXTRA_OPTS:-}"
+if [ -n "$ssh_private_key" ]; then
+  ssh_extra_opts="$ssh_extra_opts -i $ssh_private_key -o IdentitiesOnly=yes -o UserKnownHostsFile=$known_hosts_file -o StrictHostKeyChecking=accept-new"
+fi
+
+echo "Waiting for SSH authentication to succeed..."
+ssh_auth_start="$(date +%s)"
+ssh_auth_last_status="$ssh_auth_start"
+while true; do
+  if timeout 5 ssh \
+    -o BatchMode=yes \
+    -o ConnectTimeout=5 \
+    -o NumberOfPasswordPrompts=0 \
+    -o PasswordAuthentication=no \
+    -o KbdInteractiveAuthentication=no \
+    -o GSSAPIAuthentication=no \
+    ${ssh_extra_opts} \
+    -p "$ssh_port" "$ssh_user@127.0.0.1" true >/dev/null 2>&1; then
+    echo "SSH authentication is available on 127.0.0.1:$ssh_port"
+    break
+  fi
+
+  if ! kill -0 "$vm_pid" 2>/dev/null; then
+    echo "qemu exited before SSH authentication became available"
+    tail -n 200 "$log_file" || true
+    exit 1
+  fi
+
+  ssh_auth_now="$(date +%s)"
+  if [ $((ssh_auth_now - ssh_auth_start)) -ge "$ssh_banner_timeout" ]; then
+    echo "Timed out waiting for SSH authentication on 127.0.0.1:$ssh_port"
+    tail -n 200 "$log_file" || true
+    kill "$vm_pid" >/dev/null 2>&1 || true
+    wait "$vm_pid" >/dev/null 2>&1 || true
+    exit 1
+  fi
+  if [ "$wait_status_interval" -gt 0 ] && [ $((ssh_auth_now - ssh_auth_last_status)) -ge "$wait_status_interval" ]; then
+    echo "Still waiting for SSH authentication on 127.0.0.1:$ssh_port..."
+    ssh_auth_last_status="$ssh_auth_now"
+  fi
+
+  sleep 2
+done
+
+BOOTC_VM_BOOT_TIMEOUT_S="$boot_timeout" \
+BOOTC_VM_SSH="$ssh_user@127.0.0.1 -p $ssh_port" \
+BOOTC_VM_SSH_EXTRA_OPTS="$ssh_extra_opts" \
+mise exec -- bats tests/smoke/vm-bootc.bats &
+bats_pid="$!"
+
+while kill -0 "$bats_pid" 2>/dev/null; do
+  if ! kill -0 "$vm_pid" 2>/dev/null; then
+    echo "mkosi/qemu exited before smoke tests completed"
+    tail -n 200 "$log_file" || true
+    kill "$bats_pid" >/dev/null 2>&1 || true
+    wait "$bats_pid" >/dev/null 2>&1 || true
+    exit 1
+  fi
+
+  if grep -Eq \
+    "Could not set up host forwarding rule|Address already in use|Could not access KVM kernel module|failed to initialize kvm|could not open disk image|Failed to get \"write\" lock" \
+    "$log_file"; then
+    echo "Detected fatal qemu error while smoke tests were running"
+    tail -n 200 "$log_file" || true
+    kill "$vm_pid" "$bats_pid" >/dev/null 2>&1 || true
+    wait "$bats_pid" >/dev/null 2>&1 || true
+    exit 1
+  fi
+
+  sleep 2
+done
+
+wait "$bats_pid"
+'''
