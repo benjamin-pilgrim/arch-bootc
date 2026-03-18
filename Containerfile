@@ -73,6 +73,8 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
 
 ADD rootfs/ /
 
+RUN systemctl --root=/ enable systemd-networkd.service systemd-resolved.service
+
 RUN useradd --uid 1000 --create-home --shell /bin/bash --user-group makepkg && \
     install -d -o makepkg -g makepkg /home/makepkg/.config/pacman && \
     install -d -m 700 -o makepkg -g makepkg /home/makepkg/.gnupg && \

@@ -30,8 +30,6 @@ system = [
   "dbus-glib",
   "glib2",
   "shadow",
-  "networkmanager",
-  "network-manager-applet",
   "openbsd-netcat",
   "pipewire",
   "pipewire-alsa",
