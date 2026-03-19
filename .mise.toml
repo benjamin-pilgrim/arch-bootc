@@ -6,7 +6,7 @@ description = "Build image with Containerfile"
 run = '''
 set -eu
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-build_flags="${BUILD_FLAGS:---layers=false}"
+build_flags="${BUILD_FLAGS:---layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-${TMPDIR:-/tmp}/arch-bootc-build}"
 
 mkdir -p "$build_tmpdir"
@@ -23,7 +23,7 @@ run = '''
 set -eu
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
 image_tag="${BUILD_IMAGE_TAG:-latest}"
-build_flags="${BUILD_FLAGS:---layers=false}"
+build_flags="${BUILD_FLAGS:---layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-${TMPDIR:-/tmp}/arch-bootc-build}"
 
 mkdir -p "$build_tmpdir"
@@ -40,7 +40,7 @@ run = '''
 set -eu
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
 image_tag="${BUILD_IMAGE_TAG:-latest}"
-build_flags="${BUILD_FLAGS:---layers=false}"
+build_flags="${BUILD_FLAGS:---layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-${TMPDIR:-/tmp}/arch-bootc-build}"
 
 mkdir -p "$build_tmpdir"
@@ -111,7 +111,7 @@ run = 'exec ./scripts/generate-vm-artifact.sh'
 description = "Build image and switch local host via bootc"
 run = '''
 set -eux
-build_flags="${BUILD_FLAGS:---layers=false}"
+build_flags="${BUILD_FLAGS:---layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
 
 tmpfile=""
@@ -123,6 +123,34 @@ img_id="$(sed 's/^sha256://' "$tmpfile")"
 echo "Built image: $img_id"
 bootc switch --transport containers-storage "$img_id"
 reboot
+'''
+
+[tasks.build-containerfile-clean]
+description = "Build image with Containerfile without layer cache"
+run = '''
+set -eu
+BUILD_FLAGS="${BUILD_FLAGS:---layers=false}" mise run build-containerfile
+'''
+
+[tasks.build-log-clean]
+description = "Build image and write build.log without layer cache"
+run = '''
+set -eu
+BUILD_FLAGS="${BUILD_FLAGS:---layers=false}" mise run build-log
+'''
+
+[tasks.build-log-ts-clean]
+description = "Build image and write timestamped build.log without layer cache"
+run = '''
+set -eu
+BUILD_FLAGS="${BUILD_FLAGS:---layers=false}" mise run build-log-ts
+'''
+
+[tasks.upgrade-clean]
+description = "Build image without layer cache and switch local host via bootc"
+run = '''
+set -eu
+BUILD_FLAGS="${BUILD_FLAGS:---layers=false}" mise run upgrade
 '''
 
 [tasks.test-structure]

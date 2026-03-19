@@ -1,0 +1,15 @@
+[official]
+runtime = [
+  "ostree",
+  "dracut",
+  "base-devel",
+  "git",
+]
+
+build = [
+  "rust",
+  "go-md2man",
+]
+
+[versions]
+bootc = "v1.12.1"

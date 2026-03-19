@@ -1,22 +1,38 @@
-FROM docker.io/mikefarah/yq:4 AS manifest-gen
-COPY packages.toml /src/packages.toml
+FROM docker.io/mikefarah/yq:4 AS bootc-manifest
+COPY packages/bootc.toml /src/bootc.toml
 RUN mkdir -p /tmp/out && \
-    yq -r '.official.bootc_runtime[]' /src/packages.toml > /tmp/out/packages-official-bootc-runtime.txt && \
-    yq -r '.official.bootc_build[]' /src/packages.toml > /tmp/out/packages-official-bootc-build.txt && \
-    yq -r '.official.kernel_runtime[]' /src/packages.toml > /tmp/out/packages-official-kernel-runtime.txt && \
-    yq -r '.official.system[]' /src/packages.toml > /tmp/out/packages-official-system.txt && \
-    yq -r '.aur.packages[]' /src/packages.toml > /tmp/out/packages-aur.txt && \
-    yq -r '.versions.bootc' /src/packages.toml > /tmp/out/bootc-version.txt && \
-    yq -o=json '.keys' /src/packages.toml > /tmp/out/keys.json
+    yq -r '.official.runtime[]' /src/bootc.toml > /tmp/out/packages-official-bootc-runtime.txt && \
+    yq -r '.official.build[]' /src/bootc.toml > /tmp/out/packages-official-bootc-build.txt && \
+    yq -r '.versions.bootc' /src/bootc.toml > /tmp/out/bootc-version.txt
+
+FROM docker.io/mikefarah/yq:4 AS kernel-manifest
+COPY packages/kernel.toml /src/kernel.toml
+RUN mkdir -p /tmp/out && \
+    yq -r '.official.runtime[]' /src/kernel.toml > /tmp/out/packages-official-kernel-runtime.txt
+
+FROM docker.io/mikefarah/yq:4 AS system-manifest
+COPY packages/system.toml /src/system.toml
+RUN mkdir -p /tmp/out && \
+    yq -r '.official.packages[]' /src/system.toml > /tmp/out/packages-official-system.txt
+
+FROM docker.io/mikefarah/yq:4 AS aur-manifest
+COPY packages/aur.toml /src/aur.toml
+RUN mkdir -p /tmp/out && \
+    yq -r '.aur.packages[]' /src/aur.toml > /tmp/out/packages-aur.txt
+
+FROM docker.io/mikefarah/yq:4 AS keys-manifest
+COPY packages/keys.toml /src/keys.toml
+RUN mkdir -p /tmp/out && \
+    yq -o=json '.keys' /src/keys.toml > /tmp/out/keys.json
 
 FROM docker.io/archlinux/archlinux:latest AS base
 
 RUN mv /var/lib/pacman /usr/lib/pacman && echo "DBPath = /usr/lib/pacman/" >> /etc/pacman.conf
 
-COPY --from=manifest-gen /tmp/out/packages-official-bootc-runtime.txt /tmp/packages-official-bootc-runtime.txt
-COPY --from=manifest-gen /tmp/out/packages-official-bootc-build.txt /tmp/packages-official-bootc-build.txt
-COPY --from=manifest-gen /tmp/out/packages-official-kernel-runtime.txt /tmp/packages-official-kernel-runtime.txt
-COPY --from=manifest-gen /tmp/out/packages-official-system.txt /tmp/packages-official-system.txt
+COPY --from=bootc-manifest /tmp/out/packages-official-bootc-runtime.txt /tmp/packages-official-bootc-runtime.txt
+COPY --from=bootc-manifest /tmp/out/packages-official-bootc-build.txt /tmp/packages-official-bootc-build.txt
+COPY --from=kernel-manifest /tmp/out/packages-official-kernel-runtime.txt /tmp/packages-official-kernel-runtime.txt
+COPY --from=system-manifest /tmp/out/packages-official-system.txt /tmp/packages-official-system.txt
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
@@ -33,7 +49,7 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
     xargs -a /tmp/packages-official-bootc-build.txt -- pacman -Sy --noconfirm --needed
 
-COPY --from=manifest-gen /tmp/out/bootc-version.txt /tmp/bootc-version.txt
+COPY --from=bootc-manifest /tmp/out/bootc-version.txt /tmp/bootc-version.txt
 RUN BOOTC_VERSION="$(cat /tmp/bootc-version.txt)" && \
     git clone --depth 1 --branch "${BOOTC_VERSION}" "https://github.com/bootc-dev/bootc.git" /tmp/bootc
 
@@ -82,12 +98,12 @@ RUN useradd --uid 1000 --create-home --shell /bin/bash --user-group makepkg && \
     runuser -u makepkg -- sh -c 'printf "keyserver-options auto-key-retrieve\n" > ~/.gnupg/gpg.conf' && \
     chmod 600 /home/makepkg/.gnupg/gpg.conf
 
-COPY --from=manifest-gen /tmp/out/keys.json /tmp/keys.json
+COPY --from=keys-manifest /tmp/out/keys.json /tmp/keys.json
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
     runuser -u makepkg -- bash /usr/local/libexec/import-keys.sh /tmp/keys.json
 
-COPY --from=manifest-gen /tmp/out/packages-aur.txt /tmp/packages-aur.txt
+COPY --from=aur-manifest /tmp/out/packages-aur.txt /tmp/packages-aur.txt
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \

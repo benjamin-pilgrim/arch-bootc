@@ -13,8 +13,17 @@ mise tasks ls
 Examples:
 
 ```bash
-# Build image (defaults to arch-bootc:latest)
+# Build image (defaults to arch-bootc:latest, with layer cache enabled)
 mise run build-containerfile
+
+# Force a cold rebuild without layer cache
+mise run build-containerfile-clean
+
+# Build and tee output to build.log
+mise run build-log
+
+# Force a cold rebuild and tee output to build.log
+mise run build-log-clean
 
 # Run structure tests against a local tag
 BUILD_IMAGE_NAME=arch-bootc BUILD_IMAGE_TAG=local mise run test-structure
@@ -61,9 +70,23 @@ BOOTC_VM_LOG_LEVEL=quiet mise run test-smoke-vm-local
 BOOTC_VM_LOG_LEVEL=normal mise run test-smoke-vm-local
 BOOTC_VM_LOG_LEVEL=debug mise run test-smoke-vm-local
 
-# Optional: mirror the qemu log to a file so you can grep it live
-
 # Optional: disable injected serial kernel logs or fully customize injected kernel cmdline
 BOOTC_VM_SERIAL_KERNEL_LOG=0 mise run test-smoke-vm-local
 BOOTC_VM_KERNEL_CMDLINE='console=ttyS0 loglevel=7' mise run test-smoke-vm-local
 ```
+
+## Package Manifests
+
+Package inputs are split by concern under `packages/`:
+
+- `packages/bootc.toml`
+- `packages/kernel.toml`
+- `packages/system.toml`
+- `packages/aur.toml`
+- `packages/keys.toml`
+
+This keeps build cache boundaries sane:
+
+- changing `packages/system.toml` or `packages/aur.toml` does not invalidate the expensive `bootc` build layer
+- changing `packages/keys.toml` only affects key import
+- only `packages/bootc.toml` affects the `bootc-build` stage
