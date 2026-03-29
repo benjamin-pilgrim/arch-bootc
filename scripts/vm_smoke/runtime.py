@@ -66,7 +66,7 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
             env = os.environ.copy()
             env["BUILD_IMAGE_NAME"] = runner.cfg.image_name
             env["BUILD_IMAGE_TAG"] = runner.cfg.image_tag
-            runner.run_cmd(["mise", "run", "build-log"], env=env)
+            runner.run_cmd(["mise", "run", "image:build"], env=env)
         runner.image_id = runner.podman_image_id(runner.cfg.image_ref)
         verify = runner.podman_cmd(
             [
@@ -113,7 +113,7 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
     elif not runner.cfg.bootable.exists():
         raise SystemExit(
             f"Sandbox mode requires an existing bootable image at {runner.cfg.bootable}.\n"
-            f"Generate it outside the sandbox first with: sudo BUILD_IMAGE_TAG={runner.cfg.image_tag} mise run generate-vm-artifact"
+            f"Generate it outside the sandbox first with: sudo BUILD_IMAGE_TAG={runner.cfg.image_tag} mise run image:artifact"
         )
 
     runner.cfg.bootable = runner.cfg.bootable.resolve()
@@ -123,7 +123,7 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
         if not runner.cfg.bootable_image_id_file.exists() or not runner.cfg.bootable_image_id_file.read_text().strip():
             raise SystemExit(
                 f"Sandbox mode requires a non-empty artifact stamp at {runner.cfg.bootable_image_id_file}.\n"
-                f"Generate it outside the sandbox first with: sudo BUILD_IMAGE_TAG={runner.cfg.image_tag} mise run generate-vm-artifact"
+                f"Generate it outside the sandbox first with: sudo BUILD_IMAGE_TAG={runner.cfg.image_tag} mise run image:artifact"
             )
         runner.debug("Using sandbox VM artifact:")
         runner.debug(f"  disk: {runner.cfg.bootable}")

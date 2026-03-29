@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mise tasks:*)",
+      "Bash(mise run:*)"
+    ]
+  }
+}

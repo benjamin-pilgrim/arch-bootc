@@ -303,6 +303,11 @@ assert_graphical_home_ready() {
     grep -Fx "source = /usr/share/hypr/override.d/*.conf" /usr/share/hypr/hyprland.conf
     grep -Fx "source = \$XDG_CONFIG_HOME/hypr/hyprland.conf" /usr/share/hypr/hyprland.conf
     test -f /usr/share/hypr/override.d/00-default.conf
+    test -f /usr/share/hypr/override.d/10-desktop.conf
+    test -f /usr/share/hypr/hyprlock.conf
+    test -f /usr/share/hypr/hyprpaper.conf
+    test -x /usr/share/hypr/scripts/terminal-from-active
+    test -f /usr/share/backgrounds/arch-bootc/wallpaper.png
   '
   [ "$status" -eq 0 ]
 }

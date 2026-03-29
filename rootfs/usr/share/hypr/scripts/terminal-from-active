@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+from pathlib import Path
+
+LAUNCHER = ["uwsm", "app", "--", "kitty"]
+
+
+def run_capture(cmd: list[str]) -> str:
+    try:
+        proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        return proc.stdout
+    except FileNotFoundError:
+        return ""
+
+
+def active_window() -> dict:
+    out = run_capture(["hyprctl", "-j", "activewindow"]).strip()
+    if not out:
+        return {}
+    try:
+        data = json.loads(out)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def kitty_focused_cwd() -> str | None:
+    out = run_capture(["kitty", "@", "ls"]).strip()
+    if not out:
+        return None
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(data, list):
+        return None
+
+    for os_window in data:
+        if not isinstance(os_window, dict) or not os_window.get("is_focused"):
+            continue
+        for tab in os_window.get("tabs", []):
+            if not isinstance(tab, dict) or not tab.get("is_focused"):
+                continue
+            for window in tab.get("windows", []):
+                if not isinstance(window, dict) or not window.get("is_focused"):
+                    continue
+                cwd = window.get("cwd")
+                if isinstance(cwd, str) and cwd:
+                    return cwd
+    return None
+
+
+def cwd_from_title(title: str) -> str | None:
+    guess = title.split(">", 1)[0].strip()
+    if not guess:
+        return None
+    path = Path(guess).expanduser()
+    if path.is_dir():
+        return str(path)
+    return None
+
+
+def resolve_cwd(win: dict) -> str | None:
+    if win.get("class") != "kitty":
+        return None
+
+    cwd = kitty_focused_cwd()
+    if cwd and Path(cwd).is_dir():
+        return cwd
+
+    title = str(win.get("title") or "")
+    return cwd_from_title(title)
+
+
+def main() -> int:
+    win = active_window()
+    cwd = resolve_cwd(win)
+    cmd = list(LAUNCHER)
+    if cwd:
+        cmd.extend(["--directory", cwd])
+    os.execvp(cmd[0], cmd)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

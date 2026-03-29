@@ -2,6 +2,7 @@
 # This is idempotent and does not overwrite user-managed files.
 
 [ -n "${HOME:-}" ] || return 0
+[ -d "${HOME}" ] || return 0
 
 cfg_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 hypr_dir="$cfg_home/hypr"

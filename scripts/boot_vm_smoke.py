@@ -75,7 +75,9 @@ class BootVmSmoke:
         if self.cfg.use_run0_podman and os.getuid() != 0:
             if shutil.which("run0"):
                 cmd = ["run0", *cmd]
-            elif shutil.which("sudo"):
+            elif shutil.which("sudo") and subprocess.run(
+                ["sudo", "-n", "true"], capture_output=True
+            ).returncode == 0:
                 cmd = ["sudo", *cmd]
         return self.run_cmd(cmd, **kwargs)
 

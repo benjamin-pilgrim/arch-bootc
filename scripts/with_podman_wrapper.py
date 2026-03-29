@@ -17,7 +17,9 @@ def main() -> int:
         podman_exec = None
         if shutil.which("run0"):
             podman_exec = "run0 podman \"$@\""
-        elif shutil.which("sudo"):
+        elif shutil.which("sudo") and subprocess.run(
+            ["sudo", "-n", "true"], capture_output=True
+        ).returncode == 0:
             podman_exec = "sudo podman \"$@\""
         if podman_exec:
             wrapper_dir = pathlib.Path(tempfile.mkdtemp(prefix="podman-wrapper."))

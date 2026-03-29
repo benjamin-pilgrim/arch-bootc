@@ -69,7 +69,10 @@ def pacman_dep_satisfied(dep_expr):
 
 
 def pacman_official_available(pkg_name):
-    return run(["pacman", "-Si", pkg_name], capture=True, check=False).returncode == 0
+    global official_repo_packages
+    if official_repo_packages is None:
+        official_repo_packages = set(out(["bash", "-lc", "pacman -Sy >/dev/null && pacman -Ssq"]).splitlines())
+    return pkg_name in official_repo_packages
 
 
 def install_official(packages):
@@ -117,22 +120,54 @@ provider_cache = {}
 symbol_to_repo = {}
 official_needed = set()
 top_level_repos = []
+official_repo_packages = None
+
+
+def remote_default_branch(repo_name):
+    url = f"https://aur.archlinux.org/{repo_name}.git"
+    lines = out(["git", "ls-remote", "--symref", url, "HEAD"], user="makepkg").splitlines()
+    for line in lines:
+        if not line.startswith("ref: ") or "\tHEAD" not in line:
+            continue
+        ref = line.split("\t", 1)[0].split(" ", 1)[1].strip()
+        return ref.rsplit("/", 1)[-1]
+    heads = out(["git", "ls-remote", "--heads", url], user="makepkg").splitlines()
+    branches = []
+    for line in heads:
+        parts = line.split("\t", 1)
+        if len(parts) != 2 or not parts[1].startswith("refs/heads/"):
+            continue
+        branches.append(parts[1].rsplit("/", 1)[-1])
+    if "master" in branches:
+        return "master"
+    if "main" in branches:
+        return "main"
+    if len(branches) == 1:
+        return branches[0]
+    raise RuntimeError(f"unable to determine default branch for {repo_name}")
+
+
+def aur_repo_name(pkg_name):
+    info = aur_info(pkg_name)
+    if not info:
+        return None
+    return info.get("PackageBase") or info["Name"]
 
 
 def update_repo(repo_name):
     repo_dir = CACHE_AUR / repo_name
+    branch = remote_default_branch(repo_name)
     if (repo_dir / ".git").exists():
-        run(["git", "-C", str(repo_dir), "fetch", "--depth", "1", "origin", "master"], user="makepkg")
-        run(["git", "-C", str(repo_dir), "reset", "--hard", "origin/master"], user="makepkg")
+        run(["git", "-C", str(repo_dir), "fetch", "--depth", "1", "origin", branch], user="makepkg")
+        run(["git", "-C", str(repo_dir), "checkout", "-B", branch, f"origin/{branch}"], user="makepkg")
     else:
         run(
-            ["git", "clone", "--depth", "1", "--single-branch", f"https://aur.archlinux.org/{repo_name}.git", str(repo_dir)],
+            ["git", "clone", "--depth", "1", "--single-branch", "--branch", branch, f"https://aur.archlinux.org/{repo_name}.git", str(repo_dir)],
             user="makepkg",
         )
     srcinfo = repo_dir / ".SRCINFO"
-    if not srcinfo.exists():
-        generated = out(["bash", "-lc", "makepkg --printsrcinfo"], cwd=repo_dir, user="makepkg")
-        srcinfo.write_text(generated)
+    generated = out(["bash", "-lc", "makepkg --printsrcinfo"], cwd=repo_dir, user="makepkg")
+    srcinfo.write_text(generated)
     return repo_dir
 
 
@@ -184,21 +219,22 @@ def select_provider(dep_expr):
 
     exact = aur_info(dep)
     if exact:
-        provider_cache[dep] = exact["Name"]
+        provider_cache[dep] = exact.get("PackageBase") or exact["Name"]
         return provider_cache[dep]
 
     candidates = aur_search_provides(dep)
     if len(candidates) == 1:
-        provider_cache[dep] = candidates[0]["Name"]
+        provider_cache[dep] = candidates[0].get("PackageBase") or candidates[0]["Name"]
         return provider_cache[dep]
 
     matches = []
     for candidate in candidates:
         candidate_name = candidate["Name"]
         candidate_info = aur_info(candidate_name) or candidate
+        candidate_repo = candidate_info.get("PackageBase") or candidate_name
         provides = candidate_info.get("Provides") or []
         if candidate_name == dep or any(dep_name(item) == dep for item in provides):
-            matches.append(candidate_name)
+            matches.append(candidate_repo)
 
     unique = sorted(set(matches))
     if len(unique) == 1:
@@ -306,7 +342,10 @@ def read_requested_repos():
         pkg = raw.strip()
         if not pkg or pkg.startswith("#"):
             continue
-        repos.append(pkg)
+        repo_name = aur_repo_name(pkg)
+        if not repo_name:
+            raise RuntimeError(f"unable to resolve requested AUR package '{pkg}'")
+        repos.append(repo_name)
     return repos
 
 

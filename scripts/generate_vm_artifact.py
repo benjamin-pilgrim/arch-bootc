@@ -37,20 +37,22 @@ def main() -> int:
         env = os.environ.copy()
         env["BUILD_IMAGE_NAME"] = image_name
         env["BUILD_IMAGE_TAG"] = image_tag
-        subprocess.run(["mise", "run", "build-log"], check=True, env=env)
+        subprocess.run(["mise", "run", "image:build"], check=True, env=env)
 
     image_id = podman_image_id(ref)
     if not image_id:
         print(f"Failed to determine image ID for {ref}", file=sys.stderr)
         return 1
 
-    env = os.environ.copy()
-    env["BUILD_IMAGE_NAME"] = image_name
-    env["BUILD_IMAGE_TAG"] = image_tag
-    env["BUILD_BASE_DIR"] = str(base_dir)
-    env["BOOTABLE_IMAGE_PATH"] = str(bootable)
-    subprocess.run(["mise", "run", "generate-bootable-image"], check=True, env=env)
-    bootable_image_id_file.write_text(f"{image_id}\n")
+    current_stamp = bootable_image_id_file.read_text().strip() if bootable_image_id_file.exists() else ""
+    if not bootable.exists() or current_stamp != image_id:
+        env = os.environ.copy()
+        env["BUILD_IMAGE_NAME"] = image_name
+        env["BUILD_IMAGE_TAG"] = image_tag
+        env["BUILD_BASE_DIR"] = str(base_dir)
+        env["BOOTABLE_IMAGE_PATH"] = str(bootable)
+        subprocess.run(["mise", "run", "generate-bootable-image"], check=True, env=env)
+        bootable_image_id_file.write_text(f"{image_id}\n")
 
     print("VM artifact ready:")
     print(f"  image: {ref}")

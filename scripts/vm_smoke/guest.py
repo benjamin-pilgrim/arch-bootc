@@ -37,8 +37,7 @@ def install_smoke_hypr_config(cfg: Config) -> str:
         install -d -o {cfg.homed_firstboot_user} -g {cfg.homed_firstboot_user} -m 0755 {cfg.homed_firstboot_image_path}/.local
         install -d -o {cfg.homed_firstboot_user} -g {cfg.homed_firstboot_user} -m 0755 {cfg.homed_firstboot_image_path}/.local/share
         install -d -o {cfg.homed_firstboot_user} -g {cfg.homed_firstboot_user} -m 0755 {cfg.homed_firstboot_image_path}/.local/state
-        install -d -o {cfg.homed_firstboot_user} -g {cfg.homed_firstboot_user} -m 0755 {cfg.homed_firstboot_image_path}/.local/share/cloudflare-warp-gui
-        rm -f {cfg.homed_firstboot_image_path}/.config/hypr/hyprland.conf.d/99-graphical-smoke.conf
+rm -f {cfg.homed_firstboot_image_path}/.config/hypr/hyprland.conf.d/99-graphical-smoke.conf
         cat >/etc/profile.d/uwsm.sh <<'EOF'
 if uwsm check may-start; then
     if [ "${{LOGNAME:-${{USER:-}}}}" = "{cfg.homed_firstboot_user}" ] && [ "${{XDG_VTNR:-}}" = "1" ]; then

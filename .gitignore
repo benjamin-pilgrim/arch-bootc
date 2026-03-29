@@ -5,3 +5,4 @@ cosign.key
 build.log
 mkosi.crt
 mkosi.key
+__pycache__/

@@ -2,7 +2,7 @@
 
 ## Development Tasks
 
-This repo uses `mise` for tool + task management.
+This repo uses `mise` for tool and task management.
 
 ```bash
 mise trust
@@ -10,69 +10,74 @@ mise install
 mise tasks ls
 ```
 
-Examples:
+Canonical local workflows:
 
 ```bash
-# Build image (defaults to arch-bootc:latest, with layer cache enabled)
-mise run build-containerfile
+# Build the local image with layer cache enabled
+BUILD_IMAGE_TAG=local mise run image:build
 
 # Force a cold rebuild without layer cache
-mise run build-containerfile-clean
+BUILD_IMAGE_TAG=local mise run image:build-clean
 
-# Build and tee output to build.log
-mise run build-log
+# Refresh bootable.img only when the built image ID changed
+BUILD_IMAGE_TAG=local mise run image:artifact
 
-# Force a cold rebuild and tee output to build.log
-mise run build-log-clean
+# Run the full local pipeline
+BUILD_IMAGE_TAG=local mise run test:all
 
-# Run structure tests against a local tag
-BUILD_IMAGE_NAME=arch-bootc BUILD_IMAGE_TAG=local mise run test-structure
+# Boot the graphical VM smoke directly against the current artifact
+BUILD_IMAGE_TAG=local mise run test:vm:graphical
 
-# Run container smoke tests against a local tag
-BUILD_IMAGE_NAME=arch-bootc BUILD_IMAGE_TAG=local mise run test-smoke-container
+# Build first, refresh the artifact if needed, then boot the graphical VM and leave it open
+BUILD_IMAGE_TAG=local mise run run:vm:graphical
+```
 
-# Run VM smoke tests against a booted guest over SSH
-BOOTC_VM_SSH='root@127.0.0.1 -p 2222' mise run test-smoke-vm
+Additional test entry points:
 
+```bash
+# Container smoke tests against a chosen image tag
+BUILD_IMAGE_NAME=arch-bootc BUILD_IMAGE_TAG=local mise run test:container
+
+# VM smoke tests against an already booted guest over SSH
+BOOTC_VM_SSH='root@127.0.0.1 -p 2222' mise run test:vm
+
+# Sandbox VM smoke against an existing stamped artifact
+BUILD_IMAGE_TAG=local mise run test:vm:sandbox
+
+# Sandbox graphical VM smoke against an existing stamped artifact
+BUILD_IMAGE_TAG=local mise run test:vm:sandbox-graphical
+```
+
+Useful overrides:
+
+```bash
 # Optional: if SSH user is non-root, prefix privileged commands
-BOOTC_VM_ROOT_PREFIX='sudo -n' BOOTC_VM_SSH='user@vm' mise run test-smoke-vm
-
-# Boot local bootable.img with qemu and run VM smoke tests end-to-end
-# (requires qemu-system-x86_64; defaults to SSH on localhost:2222 as root)
-# The disk image is regenerated automatically when the source container image ID changes.
-mise run test-smoke-vm-local
-
-# Build/update a stamped VM artifact for later sandbox use
-sudo BUILD_IMAGE_TAG=local mise run generate-vm-artifact
-
-# Sandbox-friendly VM boot/test path against an existing stamped bootable.img
-# This uses an existing VM artifact, skips image regeneration, and uses fw_cfg kargs injection.
-mise run test-smoke-vm-sandbox
-
-# Optional: graphical smoke variants
-mise run test-smoke-vm-graphical
-mise run test-smoke-vm-sandbox-graphical
-
-# Optional: override image tag used by vm-local flow (defaults to local)
-BUILD_IMAGE_TAG=latest mise run test-smoke-vm-local
+BOOTC_VM_ROOT_PREFIX='sudo -n' BOOTC_VM_SSH='user@vm' mise run test:vm
 
 # Optional: choose a different forwarded SSH port or user
-BOOTC_VM_SSH_PORT=2223 BOOTC_VM_SSH_USER=root mise run test-smoke-vm-local
+BOOTC_VM_SSH_PORT=2223 BOOTC_VM_SSH_USER=root BUILD_IMAGE_TAG=local mise run run:vm:graphical
 
 # Optional: disable systemd-ssh-generator path and provide your own SSH setup
-BOOTC_VM_USE_SYSTEMD_SSH_GENERATOR=0 mise run test-smoke-vm-local
+BOOTC_VM_USE_SYSTEMD_SSH_GENERATOR=0 BUILD_IMAGE_TAG=local mise run run:vm:graphical
 
 # Optional: customize the generated SSH listener for systemd-ssh-generator
-BOOTC_VM_SYSTEMD_SSH_LISTEN='0.0.0.0:22' mise run test-smoke-vm-local
+BOOTC_VM_SYSTEMD_SSH_LISTEN='0.0.0.0:22' BUILD_IMAGE_TAG=local mise run run:vm:graphical
 
 # Optional: tune VM boot log verbosity (default: quiet)
-BOOTC_VM_LOG_LEVEL=quiet mise run test-smoke-vm-local
-BOOTC_VM_LOG_LEVEL=normal mise run test-smoke-vm-local
-BOOTC_VM_LOG_LEVEL=debug mise run test-smoke-vm-local
+BOOTC_VM_LOG_LEVEL=quiet BUILD_IMAGE_TAG=local mise run run:vm:graphical
+BOOTC_VM_LOG_LEVEL=normal BUILD_IMAGE_TAG=local mise run run:vm:graphical
+BOOTC_VM_LOG_LEVEL=debug BUILD_IMAGE_TAG=local mise run run:vm:graphical
 
 # Optional: disable injected serial kernel logs or fully customize injected kernel cmdline
-BOOTC_VM_SERIAL_KERNEL_LOG=0 mise run test-smoke-vm-local
-BOOTC_VM_KERNEL_CMDLINE='console=ttyS0 loglevel=7' mise run test-smoke-vm-local
+BOOTC_VM_SERIAL_KERNEL_LOG=0 BUILD_IMAGE_TAG=local mise run run:vm:graphical
+BOOTC_VM_KERNEL_CMDLINE='console=ttyS0 loglevel=7' BUILD_IMAGE_TAG=local mise run run:vm:graphical
+```
+
+Host-mutating workflow:
+
+```bash
+# Build the image and switch the local host via bootc
+mise run host:upgrade
 ```
 
 ## Package Manifests
