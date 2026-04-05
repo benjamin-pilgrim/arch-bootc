@@ -1,24 +1,5 @@
 [official]
-bootc_runtime = [
-  "ostree",
-  "dracut",
-  "base-devel",
-  "git",
-]
-
-bootc_build = [
-  "rust",
-  "go-md2man",
-]
-
-kernel_runtime = [
-  "linux",
-  "linux-firmware",
-  "intel-ucode",
-  "cpio",
-]
-
-system = [
+packages = [
   "btrfs-progs",
   "e2fsprogs",
   "xfsprogs",
@@ -30,8 +11,6 @@ system = [
   "dbus-glib",
   "glib2",
   "shadow",
-  "networkmanager",
-  "network-manager-applet",
   "openbsd-netcat",
   "pipewire",
   "pipewire-alsa",
@@ -110,32 +89,3 @@ system = [
   "ffmpeg4.4",
   "chromium",
 ]
-
-[aur]
-packages = [
-  "1password",
-  "1password-cli",
-  "open-fprintd",
-  "python-validity",
-  "jetbrains-toolbox",
-  "cloudflare-warp-bin",
-  "walker",
-  "hyprshot-git",
-  "elephant",
-  "elephant-desktopapplications",
-  "elephant-calc",
-  "elephant-runner",
-  "elephant-files",
-  "elephant-websearch",
-  "elephant-clipboard",
-  "parsec-bin",
-  "sublime-text-4",
-  "t3code-bin",
-]
-
-[versions]
-bootc = "v1.12.1"
-
-[keys.onepassword]
-url = "https://downloads.1password.com/linux/keys/1password.asc"
-fingerprint = "3FEF9748469ADBE15DA7CA80AC2D62742012EA22"

@@ -1,0 +1,215 @@
+[tools]
+"aqua:bats-core/bats-core" = "1.12.0"
+
+[tasks."image:build"]
+description = "Build the local image with layer cache enabled"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+build_flags="${BUILD_FLAGS:---layers=true}"
+build_tmpdir="${BUILD_TMPDIR:-${TMPDIR:-/tmp}/arch-bootc-build}"
+
+mkdir -p "$build_tmpdir"
+if command -v run0 >/dev/null 2>&1; then
+  build_cmd='TMPDIR="'$build_tmpdir'" podman build '$build_flags' -t "'$image_name':'$image_tag'" . 2>&1'
+  if [ "${BUILD_TIMESTAMP_LOGS:-0}" = "1" ]; then
+    run0 sh -c "$build_cmd" | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee build.log
+  else
+    run0 sh -c "$build_cmd" | tee build.log
+  fi
+else
+  if [ "${BUILD_TIMESTAMP_LOGS:-0}" = "1" ]; then
+    TMPDIR="$build_tmpdir" podman build $build_flags -t "$image_name:$image_tag" . 2>&1 | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee build.log
+  else
+    TMPDIR="$build_tmpdir" podman build $build_flags -t "$image_name:$image_tag" . 2>&1 | tee build.log
+  fi
+fi
+'''
+
+[tasks."image:build-clean"]
+description = "Build the local image without layer cache"
+run = '''
+set -eu
+BUILD_FLAGS="${BUILD_FLAGS:---layers=false}" mise run image:build
+'''
+
+[tasks.bootc]
+description = "Internal: run bootc in the built image (pass args after --)"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+base_dir="$(cd "${BUILD_BASE_DIR:-.}" && pwd)"
+if [ "${image_name#*/}" = "$image_name" ]; then
+  image_ref="localhost/$image_name:$image_tag"
+else
+  image_ref="$image_name:$image_tag"
+fi
+
+runner=""
+if command -v run0 >/dev/null 2>&1; then
+  runner="run0"
+elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  runner="sudo"
+elif systemd-run --uid=0 --wait --collect true 2>/dev/null; then
+  runner="systemd-run --uid=0 --wait --collect"
+fi
+
+selinux_mount=""
+if [ -d /sys/fs/selinux ]; then
+  selinux_mount="-v /sys/fs/selinux:/sys/fs/selinux"
+fi
+
+podman_tty_flags="-i"
+if [ -t 0 ] && [ -t 1 ]; then
+  podman_tty_flags="-it"
+fi
+
+$runner sh -c '
+  set -eu
+  podman run \
+    --rm --privileged --pid=host \
+    '"$podman_tty_flags"' \
+    '"$selinux_mount"' \
+    -v /etc/containers:/etc/containers:Z \
+    -v /var/lib/containers:/var/lib/containers:Z \
+    -v /dev:/dev \
+    -e RUST_LOG=debug \
+    -v "'"$base_dir"':/data" \
+    --security-opt label=type:unconfined_t \
+    "'"$image_ref"'" bootc "$@"
+' -- "$@"
+'''
+
+[tasks."generate-bootable-image"]
+description = "Internal: install the built image to bootable.img"
+run = '''
+set -eu
+base_dir="$(cd "${BUILD_BASE_DIR:-.}" && pwd)"
+filesystem="${BUILD_FILESYSTEM:-ext4}"
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-local}"
+user_storage="$HOME/.local/share/containers/storage"
+user_runroot="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers"
+
+if [ "${image_name#*/}" = "$image_name" ]; then
+  image_ref="localhost/$image_name:$image_tag"
+else
+  image_ref="$image_name:$image_tag"
+fi
+
+runner=""
+if command -v run0 >/dev/null 2>&1; then
+  runner="run0"
+elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  runner="sudo"
+elif systemd-run --uid=0 --wait --collect true 2>/dev/null; then
+  runner="systemd-run --uid=0 --wait --collect"
+fi
+
+if [ ! -e "$base_dir/bootable.img" ] ; then
+  fallocate -l 20G "$base_dir/bootable.img"
+fi
+
+selinux_mount=""
+if [ -d /sys/fs/selinux ]; then
+  selinux_mount="-v /sys/fs/selinux:/sys/fs/selinux"
+fi
+
+# Run the bootc container directly from user's podman store (--root).
+# Mount user's storage at /var/lib/containers/storage so that bootc's
+# containers-storage lookup inside the container hits user's store, where
+# tar-split.gz files are intact and layer blob digests match the manifest.
+# This avoids all image-copy format-conversion issues.
+$runner sh -c '
+  set -eu
+  podman --root "'"$user_storage"'" --runroot "'"$user_runroot"'" run \
+    --rm --privileged --pid=host \
+    -i \
+    '"$selinux_mount"' \
+    -v "'"$user_storage"':/var/lib/containers/storage" \
+    -v /dev:/dev \
+    -e RUST_LOG=debug \
+    -v "'"$base_dir"':/data" \
+    --security-opt label=type:unconfined_t \
+    "'"$image_ref"'" bootc install to-disk \
+      --composefs-backend --via-loopback /data/bootable.img \
+      --filesystem '"$filesystem"' --wipe --bootloader systemd
+'
+'''
+
+[tasks."image:artifact"]
+description = "Build or refresh the local VM artifact when the image changed"
+run = 'exec python3 ./scripts/generate_vm_artifact.py'
+
+[tasks."host:upgrade"]
+description = "Build the image and switch the local host via bootc"
+run = '''
+set -eux
+build_flags="${BUILD_FLAGS:---layers=true}"
+build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
+
+tmpfile=""
+trap 'rm -f "${tmpfile:-}"' EXIT
+tmpfile="$(mktemp)"
+mkdir -p "$build_tmpdir"
+TMPDIR="$build_tmpdir" podman build $build_flags --iidfile "$tmpfile" -t arch-bootc:latest .
+img_id="$(sed 's/^sha256://' "$tmpfile")"
+echo "Built image: $img_id"
+bootc switch --transport containers-storage "$img_id"
+reboot
+'''
+
+[tasks."test:container"]
+description = "Run container smoke tests against the built image"
+run = '''
+set -eu
+image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
+image_tag="${BUILD_IMAGE_TAG:-latest}"
+exec python3 ./scripts/with_podman_wrapper.py env IMAGE_UNDER_TEST="$image_name:$image_tag" mise exec -- bats tests/smoke/container-hypr.bats
+'''
+
+[tasks."test:vm"]
+description = "Run VM smoke tests against an already booted guest over SSH"
+run = '''
+set -eu
+mise exec -- bats tests/smoke/vm-bootc.bats
+'''
+
+[tasks."test:vm-local"]
+description = "Internal: boot local bootable.img with qemu and run VM smoke tests"
+run = 'exec python3 ./scripts/boot_vm_smoke.py'
+
+[tasks."test:vm:sandbox"]
+description = "Run the sandbox VM smoke tests against an existing stamped artifact"
+run = 'BOOTC_VM_SANDBOX=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_PODMAN_USE_RUN0=0 BOOTC_VM_SKIP_IMAGE_CHECKS=1 BOOTC_VM_SKIP_BOOTABLE_REGEN=1 BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP="${BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP:-1}" mise run test:vm-local'
+
+[tasks."test:vm:graphical"]
+description = "Run the host graphical VM smoke tests against the current artifact"
+run = 'BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_SKIP_IMAGE_CHECKS="${BOOTC_VM_SKIP_IMAGE_CHECKS:-1}" BOOTC_VM_SKIP_BOOTABLE_REGEN="${BOOTC_VM_SKIP_BOOTABLE_REGEN:-1}" BOOTC_PODMAN_USE_RUN0=0 mise run test:vm-local'
+
+[tasks."test:vm:sandbox-graphical"]
+description = "Run the sandbox graphical VM smoke tests against an existing stamped artifact"
+run = 'BOOTC_VM_SANDBOX=1 BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_PODMAN_USE_RUN0=0 BOOTC_VM_SKIP_IMAGE_CHECKS=1 BOOTC_VM_SKIP_BOOTABLE_REGEN=1 BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP="${BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP:-1}" mise run test:vm-local'
+
+[tasks."run:vm:graphical"]
+description = "Build the image, refresh the VM artifact if needed, and boot the graphical VM"
+run = '''
+set -eu
+BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:build
+BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:artifact
+BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_VM_RUN_TESTS=0 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_SKIP_IMAGE_CHECKS="${BOOTC_VM_SKIP_IMAGE_CHECKS:-1}" BOOTC_VM_SKIP_BOOTABLE_REGEN="${BOOTC_VM_SKIP_BOOTABLE_REGEN:-1}" BOOTC_PODMAN_USE_RUN0=0 BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm-local
+'''
+
+[tasks."test:all"]
+description = "Build the image, refresh the VM artifact, and run the full local test pipeline"
+run = '''
+set -eu
+BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:build
+BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:artifact
+BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:container
+BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm:sandbox-graphical
+BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm:graphical
+'''
+

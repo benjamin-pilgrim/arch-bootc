@@ -1,4 +1,9 @@
 cosign.key
 *.img
-.idea
+*.img.image-id
+*.img.raw
 build.log
+mkosi.crt
+mkosi.key
+__pycache__/
+.idea

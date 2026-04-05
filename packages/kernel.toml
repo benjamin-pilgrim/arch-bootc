@@ -1,0 +1,7 @@
+[official]
+runtime = [
+  "linux",
+  "linux-firmware",
+  "intel-ucode",
+  "cpio",
+]
