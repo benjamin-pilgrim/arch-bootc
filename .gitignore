@@ -1,2 +1,4 @@
 cosign.key
 *.img
+.idea
+build.log
