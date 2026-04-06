@@ -80,6 +80,8 @@ Host-mutating workflow:
 mise run host:upgrade
 ```
 
+Builds use `podman build --network=host` by default to avoid rootless DNS resolution failures during `pacman` steps. Override `BUILD_FLAGS` if you need different networking.
+
 ## Package Manifests
 
 Package inputs are split by concern under `packages/`:

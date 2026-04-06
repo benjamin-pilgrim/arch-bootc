@@ -66,11 +66,10 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "systemd-networkd is enabled" {
+@test "NetworkManager is enabled" {
   run podman run --rm --entrypoint sh "$IMAGE_UNDER_TEST" -c '
-    systemctl --root=/ is-enabled systemd-networkd.service >/dev/null &&
-    systemctl --root=/ is-enabled systemd-resolved.service >/dev/null &&
-    test -f /etc/systemd/network/20-wired.network
+    systemctl --root=/ is-enabled NetworkManager.service >/dev/null &&
+    test -L /etc/systemd/system/multi-user.target.wants/NetworkManager.service
   '
   [ "$status" -eq 0 ]
 }

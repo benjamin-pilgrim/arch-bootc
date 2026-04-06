@@ -288,6 +288,28 @@ def find_artifacts(pkg_names):
     return artifacts
 
 
+def build_env_for_repo(info):
+    env = {
+        "AUR_BUILD_HOME": str(HOME),
+        "XDG_CACHE_HOME": str(CACHE_XDG),
+        "GOCACHE": str(CACHE_GO),
+    }
+    if info.repo_name == "walker":
+        # walker can trip an LLVM/rustc crash in ThinLTO on some builders.
+        # Force a more conservative Rust build for this package only.
+        env.update(
+            {
+                "CARGO_BUILD_JOBS": "1",
+                "CARGO_PROFILE_RELEASE_LTO": "off",
+                "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "1",
+                "MAKEFLAGS": "-j1",
+                "RUST_MIN_STACK": "33554432",
+                "RUSTFLAGS": "-C lto=off -C codegen-units=1 -C debuginfo=1",
+            }
+        )
+    return env
+
+
 def build_repo(info):
     stamp_file = CACHE_PKG / f".{info.repo_name}.aur-head"
     head = repo_head(info.repo_dir)
@@ -299,11 +321,7 @@ def build_repo(info):
         ["bash", "-lc", "makepkg -sf --noconfirm --needed"],
         cwd=info.repo_dir,
         user="makepkg",
-        env_extra={
-            "AUR_BUILD_HOME": str(HOME),
-            "XDG_CACHE_HOME": str(CACHE_XDG),
-            "GOCACHE": str(CACHE_GO),
-        },
+        env_extra=build_env_for_repo(info),
     )
     artifacts = find_artifacts(info.pkgnames)
     if len(artifacts) < len(info.pkgnames):

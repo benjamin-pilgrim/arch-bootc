@@ -78,17 +78,15 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
                 "-c",
                 "command -v sshd >/dev/null 2>&1 && "
                 "test -x /usr/lib/systemd/system-generators/systemd-ssh-generator && "
-                "test -f /etc/systemd/network/20-wired.network && "
-                "systemctl --root=/ is-enabled systemd-networkd.service >/dev/null && "
-                "systemctl --root=/ is-enabled systemd-resolved.service >/dev/null",
+                "systemctl --root=/ is-enabled NetworkManager.service >/dev/null && "
+                "test -L /etc/systemd/system/multi-user.target.wants/NetworkManager.service",
             ],
             check=False,
         )
         if verify.returncode != 0:
             raise SystemExit(
                 f"Image {runner.cfg.image_ref} is missing required VM networking or SSH prerequisites.\n"
-                "Expected: sshd, systemd-ssh-generator, /etc/systemd/network/20-wired.network,\n"
-                "and enabled systemd-networkd.service + systemd-resolved.service."
+                "Expected: sshd, systemd-ssh-generator, and enabled NetworkManager.service."
             )
 
     if not runner.cfg.skip_bootable_regen:

@@ -7,7 +7,7 @@ run = '''
 set -eu
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
 image_tag="${BUILD_IMAGE_TAG:-latest}"
-build_flags="${BUILD_FLAGS:---layers=true}"
+build_flags="${BUILD_FLAGS:---network=host --layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-${TMPDIR:-/tmp}/arch-bootc-build}"
 
 mkdir -p "$build_tmpdir"
@@ -31,7 +31,7 @@ fi
 description = "Build the local image without layer cache"
 run = '''
 set -eu
-BUILD_FLAGS="${BUILD_FLAGS:---layers=false}" mise run image:build
+BUILD_FLAGS="${BUILD_FLAGS:---network=host --layers=false}" mise run image:build
 '''
 
 [tasks.bootc]
@@ -90,8 +90,9 @@ base_dir="$(cd "${BUILD_BASE_DIR:-.}" && pwd)"
 filesystem="${BUILD_FILESYSTEM:-ext4}"
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
 image_tag="${BUILD_IMAGE_TAG:-local}"
-user_storage="$HOME/.local/share/containers/storage"
-user_runroot="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers"
+bootable_path="${BOOTABLE_IMAGE_PATH:-$base_dir/bootable.img}"
+bootable_size="${BOOTABLE_IMAGE_SIZE:-40G}"
+bootable_alloc="${BOOTABLE_IMAGE_ALLOCATOR:-truncate}"
 
 if [ "${image_name#*/}" = "$image_name" ]; then
   image_ref="localhost/$image_name:$image_tag"
@@ -108,8 +109,15 @@ elif systemd-run --uid=0 --wait --collect true 2>/dev/null; then
   runner="systemd-run --uid=0 --wait --collect"
 fi
 
-if [ ! -e "$base_dir/bootable.img" ] ; then
-  fallocate -l 20G "$base_dir/bootable.img"
+want_bytes="$(numfmt --from=iec "$bootable_size")"
+have_bytes="$(stat -c '%s' "$bootable_path" 2>/dev/null || echo 0)"
+if [ ! -e "$bootable_path" ] || [ "$have_bytes" -eq 0 ] || [ "$have_bytes" -lt "$want_bytes" ]; then
+  rm -f "$bootable_path"
+  if [ "$bootable_alloc" = "fallocate" ]; then
+    fallocate -l "$bootable_size" "$bootable_path"
+  else
+    truncate -s "$bootable_size" "$bootable_path"
+  fi
 fi
 
 selinux_mount=""
@@ -117,24 +125,19 @@ if [ -d /sys/fs/selinux ]; then
   selinux_mount="-v /sys/fs/selinux:/sys/fs/selinux"
 fi
 
-# Run the bootc container directly from user's podman store (--root).
-# Mount user's storage at /var/lib/containers/storage so that bootc's
-# containers-storage lookup inside the container hits user's store, where
-# tar-split.gz files are intact and layer blob digests match the manifest.
-# This avoids all image-copy format-conversion issues.
 $runner sh -c '
   set -eu
-  podman --root "'"$user_storage"'" --runroot "'"$user_runroot"'" run \
+  podman run \
     --rm --privileged --pid=host \
     -i \
     '"$selinux_mount"' \
-    -v "'"$user_storage"':/var/lib/containers/storage" \
+    -v /var/lib/containers:/var/lib/containers:Z \
     -v /dev:/dev \
     -e RUST_LOG=debug \
     -v "'"$base_dir"':/data" \
     --security-opt label=type:unconfined_t \
     "'"$image_ref"'" bootc install to-disk \
-      --composefs-backend --via-loopback /data/bootable.img \
+      --composefs-backend --via-loopback "/data/$(basename "'"$bootable_path"'")" \
       --filesystem '"$filesystem"' --wipe --bootloader systemd
 '
 '''
@@ -147,7 +150,7 @@ run = 'exec python3 ./scripts/generate_vm_artifact.py'
 description = "Build the image and switch the local host via bootc"
 run = '''
 set -eux
-build_flags="${BUILD_FLAGS:---layers=true}"
+build_flags="${BUILD_FLAGS:---network=host --layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
 
 tmpfile=""
@@ -212,4 +215,3 @@ BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:container
 BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm:sandbox-graphical
 BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm:graphical
 '''
-

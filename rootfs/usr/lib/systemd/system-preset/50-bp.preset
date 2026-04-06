@@ -1,4 +1,3 @@
-enable systemd-networkd.service
-enable systemd-resolved.service
+enable NetworkManager.service
 enable systemd-homed-firstboot.service
 enable bluetooth.service

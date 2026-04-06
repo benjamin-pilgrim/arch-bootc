@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 
@@ -16,8 +17,22 @@ def image_ref(image_name: str, image_tag: str) -> str:
     return f"localhost/{image_name}:{image_tag}" if "/" not in image_name else f"{image_name}:{image_tag}"
 
 
+def env_flag(name: str, default: str = "0") -> bool:
+    return os.environ.get(name, default) == "1"
+
+
+def podman_cmd(args: list[str], *, check: bool = True, capture_output: bool = False, text: bool = True) -> subprocess.CompletedProcess[str]:
+    cmd = ["podman", *args]
+    if env_flag("BOOTC_PODMAN_USE_RUN0", "1") and os.getuid() != 0:
+        if shutil.which("run0"):
+            cmd = ["run0", *cmd]
+        elif shutil.which("sudo") and subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
+            cmd = ["sudo", *cmd]
+    return subprocess.run(cmd, check=check, capture_output=capture_output, text=text)
+
+
 def podman_image_id(ref: str) -> str:
-    result = subprocess.run(["podman", "image", "inspect", "--format", "json", ref], check=True, capture_output=True, text=True)
+    result = podman_cmd(["image", "inspect", "--format", "json", ref], capture_output=True)
     data = json.loads(result.stdout)
     obj = data[0] if isinstance(data, list) else data
     return str(obj.get("Id", ""))
@@ -31,7 +46,7 @@ def main() -> int:
     image_tag = env_str("BUILD_IMAGE_TAG", "local")
     ref = image_ref(image_name, image_tag)
 
-    exists = subprocess.run(["podman", "image", "exists", ref], check=False)
+    exists = podman_cmd(["image", "exists", ref], check=False, capture_output=True)
     if exists.returncode != 0:
         print(f"Image {ref} not found; building it now...", flush=True)
         env = os.environ.copy()
