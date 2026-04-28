@@ -12,4 +12,4 @@ build = [
 ]
 
 [versions]
-bootc = "v1.12.1"
+bootc = "v1.14.1"

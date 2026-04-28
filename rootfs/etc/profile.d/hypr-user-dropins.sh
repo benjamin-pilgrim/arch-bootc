@@ -21,12 +21,12 @@ fi
 
 if [ ! -e "$main_cfg" ]; then
     cat >"$main_cfg" <<'EOF'
-source = $XDG_CONFIG_HOME/hypr/hyprland.conf.d/*.conf
+source = $HOME/.config/hypr/hyprland.conf.d/*.conf
 EOF
 elif ! grep -Eq 'hyprland\.conf\.d/\*\.conf' "$main_cfg"; then
     cat >>"$main_cfg" <<'EOF'
 
 # User Hyprland drop-ins.
-source = $XDG_CONFIG_HOME/hypr/hyprland.conf.d/*.conf
+source = $HOME/.config/hypr/hyprland.conf.d/*.conf
 EOF
 fi

@@ -12,6 +12,7 @@ packages = [
   "glib2",
   "shadow",
   "openbsd-netcat",
+  "networkmanager",
   "pipewire",
   "pipewire-alsa",
   "pipewire-pulse",

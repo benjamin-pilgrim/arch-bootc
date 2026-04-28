@@ -1,3 +1,5 @@
 enable NetworkManager.service
+disable systemd-networkd.service
 enable systemd-homed-firstboot.service
 enable bluetooth.service
+enable arch-bootc-sync-x11-keymap.service

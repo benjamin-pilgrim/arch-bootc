@@ -6,24 +6,17 @@ description = "Build the local image with layer cache enabled"
 run = '''
 set -eu
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-image_tag="${BUILD_IMAGE_TAG:-latest}"
+image_tag="${BUILD_IMAGE_TAG:-local}"
 build_flags="${BUILD_FLAGS:---network=host --layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-${TMPDIR:-/tmp}/arch-bootc-build}"
 
 mkdir -p "$build_tmpdir"
-if command -v run0 >/dev/null 2>&1; then
-  build_cmd='TMPDIR="'$build_tmpdir'" podman build '$build_flags' -t "'$image_name':'$image_tag'" . 2>&1'
-  if [ "${BUILD_TIMESTAMP_LOGS:-0}" = "1" ]; then
-    run0 sh -c "$build_cmd" | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee build.log
-  else
-    run0 sh -c "$build_cmd" | tee build.log
-  fi
+rm -f build.log
+build_cmd='exec python3 ./scripts/with_podman_wrapper.py env TMPDIR="'$build_tmpdir'" podman build '$build_flags' -t "'$image_name':'$image_tag'" . 2>&1'
+if [ "${BUILD_TIMESTAMP_LOGS:-0}" = "1" ]; then
+  sh -c "$build_cmd" | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee build.log
 else
-  if [ "${BUILD_TIMESTAMP_LOGS:-0}" = "1" ]; then
-    TMPDIR="$build_tmpdir" podman build $build_flags -t "$image_name:$image_tag" . 2>&1 | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee build.log
-  else
-    TMPDIR="$build_tmpdir" podman build $build_flags -t "$image_name:$image_tag" . 2>&1 | tee build.log
-  fi
+  sh -c "$build_cmd" | tee build.log
 fi
 '''
 
@@ -39,7 +32,7 @@ description = "Internal: run bootc in the built image (pass args after --)"
 run = '''
 set -eu
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-image_tag="${BUILD_IMAGE_TAG:-latest}"
+image_tag="${BUILD_IMAGE_TAG:-local}"
 base_dir="$(cd "${BUILD_BASE_DIR:-.}" && pwd)"
 if [ "${image_name#*/}" = "$image_name" ]; then
   image_ref="localhost/$image_name:$image_tag"
@@ -149,19 +142,36 @@ run = 'exec python3 ./scripts/generate_vm_artifact.py'
 [tasks."host:upgrade"]
 description = "Build the image and switch the local host via bootc"
 run = '''
-set -eux
+set -eu
 build_flags="${BUILD_FLAGS:---network=host --layers=true}"
 build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
 
-tmpfile=""
-trap 'rm -f "${tmpfile:-}"' EXIT
-tmpfile="$(mktemp)"
-mkdir -p "$build_tmpdir"
-TMPDIR="$build_tmpdir" podman build $build_flags --iidfile "$tmpfile" -t arch-bootc:latest .
-img_id="$(sed 's/^sha256://' "$tmpfile")"
-echo "Built image: $img_id"
-bootc switch --transport containers-storage "$img_id"
-reboot
+runner=""
+if command -v run0 >/dev/null 2>&1; then
+  runner="run0"
+elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  runner="sudo"
+elif systemd-run --uid=0 --wait --collect true 2>/dev/null; then
+  runner="systemd-run --uid=0 --wait --collect"
+else
+  echo "host:upgrade requires root access via run0, passwordless sudo, or systemd-run." >&2
+  exit 1
+fi
+
+$runner sh -c '
+  set -eux
+  build_flags="'"$build_flags"'"
+  build_tmpdir="'"$build_tmpdir"'"
+  tmpfile=""
+  trap '"'"'rm -f "${tmpfile:-}"'"'"' EXIT
+  tmpfile="$(mktemp)"
+  mkdir -p "$build_tmpdir"
+  TMPDIR="$build_tmpdir" podman build $build_flags --iidfile "$tmpfile" -t arch-bootc:latest .
+  img_id="$(sed '"'"'s/^sha256://'"'"' "$tmpfile")"
+  echo "Built image: $img_id"
+  bootc switch --transport containers-storage "$img_id"
+  reboot
+'
 '''
 
 [tasks."test:container"]
@@ -169,7 +179,7 @@ description = "Run container smoke tests against the built image"
 run = '''
 set -eu
 image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-image_tag="${BUILD_IMAGE_TAG:-latest}"
+image_tag="${BUILD_IMAGE_TAG:-local}"
 exec python3 ./scripts/with_podman_wrapper.py env IMAGE_UNDER_TEST="$image_name:$image_tag" mise exec -- bats tests/smoke/container-hypr.bats
 '''
 
@@ -200,18 +210,18 @@ run = 'BOOTC_VM_SANDBOX=1 BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_QEMU_DISPL
 description = "Build the image, refresh the VM artifact if needed, and boot the graphical VM"
 run = '''
 set -eu
-BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:build
-BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:artifact
-BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_VM_RUN_TESTS=0 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_SKIP_IMAGE_CHECKS="${BOOTC_VM_SKIP_IMAGE_CHECKS:-1}" BOOTC_VM_SKIP_BOOTABLE_REGEN="${BOOTC_VM_SKIP_BOOTABLE_REGEN:-1}" BOOTC_PODMAN_USE_RUN0=0 BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm-local
+mise run image:build
+mise run image:artifact
+BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_VM_RUN_TESTS=0 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_SKIP_IMAGE_CHECKS="${BOOTC_VM_SKIP_IMAGE_CHECKS:-1}" BOOTC_VM_SKIP_BOOTABLE_REGEN="${BOOTC_VM_SKIP_BOOTABLE_REGEN:-1}" BOOTC_PODMAN_USE_RUN0=0 mise run test:vm-local
 '''
 
 [tasks."test:all"]
 description = "Build the image, refresh the VM artifact, and run the full local test pipeline"
 run = '''
 set -eu
-BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:build
-BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run image:artifact
-BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:container
-BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm:sandbox-graphical
-BUILD_IMAGE_TAG="${BUILD_IMAGE_TAG:-local}" mise run test:vm:graphical
+mise run image:build
+mise run image:artifact
+mise run test:container
+mise run test:vm:sandbox-graphical
+mise run test:vm:graphical
 '''

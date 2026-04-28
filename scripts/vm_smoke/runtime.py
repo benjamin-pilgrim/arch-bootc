@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 def validate_environment(runner: BootVmSmoke) -> None:
     if shutil.which(runner.cfg.qemu_bin) is None:
         raise SystemExit(
-            f"{runner.cfg.qemu_bin} is required for test-smoke-vm-local\n"
+            f"{runner.cfg.qemu_bin} is required for test:vm-local\n"
             "Install qemu-system-x86 (Ubuntu) or qemu-full/qemu-desktop (Arch) and retry."
         )
     if runner.cfg.vm_sandbox:
@@ -42,7 +42,7 @@ def validate_environment(runner: BootVmSmoke) -> None:
             raise SystemExit(
                 "Graphical VM smoke should be run without sudo.\n"
                 "Root cannot usually access the current desktop display/socket authorization cleanly.\n"
-                "Run 'mise run test-smoke-vm-graphical' as your user, or set BOOTC_VM_ALLOW_ROOT_GRAPHICS=1 if you are explicitly preserving display auth."
+                "Run 'mise run test:vm:graphical' as your user, or set BOOTC_VM_ALLOW_ROOT_GRAPHICS=1 if you are explicitly preserving display auth."
             )
         if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
             raise SystemExit(
@@ -79,14 +79,16 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
                 "command -v sshd >/dev/null 2>&1 && "
                 "test -x /usr/lib/systemd/system-generators/systemd-ssh-generator && "
                 "systemctl --root=/ is-enabled NetworkManager.service >/dev/null && "
-                "test -L /etc/systemd/system/multi-user.target.wants/NetworkManager.service",
+                "test -L /etc/systemd/system/multi-user.target.wants/NetworkManager.service && "
+                "! systemctl --root=/ is-enabled systemd-networkd.service >/dev/null && "
+                "test ! -L /etc/systemd/system/multi-user.target.wants/systemd-networkd.service",
             ],
             check=False,
         )
         if verify.returncode != 0:
             raise SystemExit(
                 f"Image {runner.cfg.image_ref} is missing required VM networking or SSH prerequisites.\n"
-                "Expected: sshd, systemd-ssh-generator, and enabled NetworkManager.service."
+                "Expected: sshd, systemd-ssh-generator, enabled NetworkManager.service, and disabled systemd-networkd.service."
             )
 
     if not runner.cfg.skip_bootable_regen:

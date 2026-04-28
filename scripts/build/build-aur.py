@@ -18,6 +18,8 @@ CACHE_BUILD = HOME / "cache" / "build"
 CACHE_PKG = HOME / "cache" / "pkg"
 CACHE_XDG = HOME / "cache" / "xdg"
 CACHE_GO = HOME / "cache" / "go-build"
+CACHE_GOMOD = HOME / "cache" / "go-mod"
+CACHE_CARGO = HOME / "cache" / "cargo"
 INSTALL_LIST = CACHE_PKG / ".install-list"
 AUR_RPC = "https://aur.archlinux.org/rpc/v5"
 DEP_SPLIT_RE = re.compile(r"[<>=]+")
@@ -50,7 +52,7 @@ def dep_name(dep_expr):
 
 def ensure_dirs():
     makepkg = pwd.getpwnam("makepkg")
-    for path in (CACHE_AUR, CACHE_SRC, CACHE_BUILD, CACHE_PKG, CACHE_XDG, CACHE_GO):
+    for path in (CACHE_AUR, CACHE_SRC, CACHE_BUILD, CACHE_PKG, CACHE_XDG, CACHE_GO, CACHE_GOMOD, CACHE_CARGO):
         path.mkdir(parents=True, exist_ok=True)
         os.chown(path, makepkg.pw_uid, makepkg.pw_gid)
     os.umask(0o022)
@@ -158,16 +160,18 @@ def update_repo(repo_name):
     repo_dir = CACHE_AUR / repo_name
     branch = remote_default_branch(repo_name)
     if (repo_dir / ".git").exists():
-        run(["git", "-C", str(repo_dir), "fetch", "--depth", "1", "origin", branch], user="makepkg")
+        # Cached AUR clones are disposable. Reset them to the fetched branch tip
+        # so generated .SRCINFO changes and upstream force-pushes do not block reuse.
+        run(["git", "-C", str(repo_dir), "fetch", "--depth", "1", "--force", "--prune", "origin", branch], user="makepkg")
+        run(["git", "-C", str(repo_dir), "reset", "--hard"], user="makepkg")
+        run(["git", "-C", str(repo_dir), "clean", "-fdx"], user="makepkg")
         run(["git", "-C", str(repo_dir), "checkout", "-B", branch, f"origin/{branch}"], user="makepkg")
     else:
         run(
             ["git", "clone", "--depth", "1", "--single-branch", "--branch", branch, f"https://aur.archlinux.org/{repo_name}.git", str(repo_dir)],
             user="makepkg",
         )
-    srcinfo = repo_dir / ".SRCINFO"
-    generated = out(["bash", "-lc", "makepkg --printsrcinfo"], cwd=repo_dir, user="makepkg")
-    srcinfo.write_text(generated)
+    run(["bash", "-lc", "makepkg --printsrcinfo > .SRCINFO"], cwd=repo_dir, user="makepkg")
     return repo_dir
 
 
@@ -293,6 +297,8 @@ def build_env_for_repo(info):
         "AUR_BUILD_HOME": str(HOME),
         "XDG_CACHE_HOME": str(CACHE_XDG),
         "GOCACHE": str(CACHE_GO),
+        "GOMODCACHE": str(CACHE_GOMOD),
+        "CARGO_HOME": str(CACHE_CARGO),
     }
     if info.repo_name == "walker":
         # walker can trip an LLVM/rustc crash in ThinLTO on some builders.
@@ -346,12 +352,6 @@ def cleanup_after_install(info, artifacts):
     cleanup_path(CACHE_BUILD / info.repo_name)
     cleanup_path(info.repo_dir / "pkg")
     cleanup_path(info.repo_dir / "src")
-
-    # These caches can grow very quickly for Go/Rust-heavy AUR packages.
-    cleanup_path(CACHE_GO)
-    cleanup_path(CACHE_XDG)
-    ensure_makepkg_owned(CACHE_GO)
-    ensure_makepkg_owned(CACHE_XDG)
 
 
 def read_requested_repos():

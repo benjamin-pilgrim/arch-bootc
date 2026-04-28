@@ -17,5 +17,4 @@ packages = [
   "elephant-clipboard",
   "parsec-bin",
   "sublime-text-4",
-  "t3code-bin",
 ]

@@ -1,0 +1,12 @@
+[Unit]
+Description=Populate X11 keyboard defaults from VC keymap when unset
+After=dbus.service systemd-firstboot.service
+Before=systemd-user-sessions.service
+ConditionPathExists=/etc/vconsole.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/sync-x11-keymap-from-vconsole.sh
+
+[Install]
+WantedBy=multi-user.target

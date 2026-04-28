@@ -299,13 +299,16 @@ assert_graphical_home_ready() {
     set -eu
     test -f /usr/lib/environment.d/95-hyprland-config.conf
     grep -Fx "HYPRLAND_CONFIG=/usr/share/hypr/hyprland.conf" /usr/lib/environment.d/95-hyprland-config.conf
+    test -f /usr/lib/systemd/system/arch-bootc-sync-x11-keymap.service
     test -f /usr/share/hypr/hyprland.conf
     grep -Fx "source = /usr/share/hypr/override.d/*.conf" /usr/share/hypr/hyprland.conf
-    grep -Fx "source = \$XDG_CONFIG_HOME/hypr/hyprland.conf" /usr/share/hypr/hyprland.conf
+    grep -Fx "source = /run/hypr/override.d/*.conf" /usr/share/hypr/hyprland.conf
+    grep -Fx "source = \$HOME/.config/hypr/hyprland.conf" /usr/share/hypr/hyprland.conf
     test -f /usr/share/hypr/override.d/00-default.conf
     test -f /usr/share/hypr/override.d/10-desktop.conf
     test -f /usr/share/hypr/hyprlock.conf
     test -f /usr/share/hypr/hyprpaper.conf
+    test -x /usr/libexec/sync-x11-keymap-from-vconsole.sh
     test -x /usr/share/hypr/scripts/terminal-from-active
     test -f /usr/share/backgrounds/arch-bootc/wallpaper.png
   '
