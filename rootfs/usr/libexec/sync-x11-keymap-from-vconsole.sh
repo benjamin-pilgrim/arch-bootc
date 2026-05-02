@@ -4,53 +4,59 @@ set -eu
 dropin_dir="/run/hypr/override.d"
 default_dropin="$dropin_dir/00-default.conf"
 keyboard_dropin="$dropin_dir/20-system-keyboard.conf"
+x11conf="/etc/X11/xorg.conf.d/00-keyboard.conf"
 
-extract_localectl_field() {
-    field="$1"
-    printf '%s\n' "${2:-}" | sed -n "s/^[[:space:]]*$field:[[:space:]]*//p" | head -n 1
-}
+x11_layout=""
+x11_model=""
+x11_variant=""
+x11_options=""
+vc_keymap=""
+localectl_status=""
 
-extract_x11conf_option() {
-    key="$1"
-    [ -r /etc/X11/xorg.conf.d/00-keyboard.conf ] || return 0
-    sed -n "s/^[[:space:]]*Option[[:space:]]*\"$key\"[[:space:]]*\"\([^\"]*\)\"/\1/p" /etc/X11/xorg.conf.d/00-keyboard.conf | head -n 1
-}
-
-mkdir -p "$dropin_dir"
-cat >"$default_dropin" <<'EOF'
+write_default_dropin() {
+    mkdir -p "$dropin_dir"
+    cat >"$default_dropin" <<'EOF'
 # Runtime Hyprland override sentinel.
 EOF
+}
 
-if ! command -v localectl >/dev/null 2>&1; then
-    rm -f "$keyboard_dropin"
-    exit 0
-fi
+localectl_field() {
+    field="$1"
+    printf '%s\n' "$localectl_status" | sed -n "s/^[[:space:]]*$field:[[:space:]]*//p" | head -n 1
+}
 
-status="$(localectl status 2>/dev/null || true)"
-x11_layout="$(extract_localectl_field 'X11 Layout' "$status")"
-x11_model="$(extract_localectl_field 'X11 Model' "$status")"
-x11_variant="$(extract_localectl_field 'X11 Variant' "$status")"
-x11_options="$(extract_localectl_field 'X11 Options' "$status")"
-vc_keymap="$(extract_localectl_field 'VC Keymap' "$status")"
+normalize_field() {
+    value="${1:-}"
+    if [ "$value" = "(unset)" ]; then
+        printf '\n'
+        return
+    fi
+    printf '%s\n' "$value"
+}
 
-[ "$x11_layout" != "(unset)" ] || x11_layout=""
+refresh_localectl_status() {
+    localectl_status="$(localectl status 2>/dev/null || true)"
+    x11_layout="$(normalize_field "$(localectl_field 'X11 Layout')")"
+    x11_model="$(normalize_field "$(localectl_field 'X11 Model')")"
+    x11_variant="$(normalize_field "$(localectl_field 'X11 Variant')")"
+    x11_options="$(normalize_field "$(localectl_field 'X11 Options')")"
+    vc_keymap="$(normalize_field "$(localectl_field 'VC Keymap')")"
+}
 
-if [ -z "$x11_layout" ] && [ -n "$vc_keymap" ] && [ "$vc_keymap" != "(unset)" ]; then
-    localectl set-keymap "$vc_keymap"
-    status="$(localectl status 2>/dev/null || true)"
-    x11_layout="$(extract_localectl_field 'X11 Layout' "$status")"
-    x11_model="$(extract_localectl_field 'X11 Model' "$status")"
-    x11_variant="$(extract_localectl_field 'X11 Variant' "$status")"
-    x11_options="$(extract_localectl_field 'X11 Options' "$status")"
-    [ "$x11_layout" != "(unset)" ] || x11_layout=""
-fi
+read_x11conf_option() {
+    key="$1"
+    [ -r "$x11conf" ] || return 0
+    sed -n "s/^[[:space:]]*Option[[:space:]]*\"$key\"[[:space:]]*\"\([^\"]*\)\"/\1/p" "$x11conf" | head -n 1
+}
 
-[ -n "$x11_layout" ] || x11_layout="$(extract_x11conf_option XkbLayout)"
-[ -n "$x11_model" ] || x11_model="$(extract_x11conf_option XkbModel)"
-[ -n "$x11_variant" ] || x11_variant="$(extract_x11conf_option XkbVariant)"
-[ -n "$x11_options" ] || x11_options="$(extract_x11conf_option XkbOptions)"
+fill_from_x11conf() {
+    [ -n "$x11_layout" ] || x11_layout="$(read_x11conf_option XkbLayout)"
+    [ -n "$x11_model" ] || x11_model="$(read_x11conf_option XkbModel)"
+    [ -n "$x11_variant" ] || x11_variant="$(read_x11conf_option XkbVariant)"
+    [ -n "$x11_options" ] || x11_options="$(read_x11conf_option XkbOptions)"
+}
 
-if [ -n "$x11_layout" ] || [ -n "$x11_model" ] || [ -n "$x11_variant" ] || [ -n "$x11_options" ]; then
+write_keyboard_dropin() {
     tmp_keyboard_dropin="$(mktemp "$dropin_dir/.20-system-keyboard.conf.XXXXXX")"
     cat >"$tmp_keyboard_dropin" <<EOF
 # Generated from system keyboard defaults.
@@ -66,6 +72,26 @@ EOF
 EOF
     chmod 0644 "$tmp_keyboard_dropin"
     mv "$tmp_keyboard_dropin" "$keyboard_dropin"
+}
+
+write_default_dropin()
+
+if ! command -v localectl >/dev/null 2>&1; then
+    rm -f "$keyboard_dropin"
+    exit 0
+fi
+
+refresh_localectl_status
+
+if [ -z "$x11_layout" ] && [ -n "$vc_keymap" ]; then
+    localectl set-keymap "$vc_keymap"
+    refresh_localectl_status
+fi
+
+fill_from_x11conf
+
+if [ -n "$x11_layout" ] || [ -n "$x11_model" ] || [ -n "$x11_variant" ] || [ -n "$x11_options" ]; then
+    write_keyboard_dropin
 else
     rm -f "$keyboard_dropin"
 fi
