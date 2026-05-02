@@ -142,12 +142,21 @@ EOF
 
 @test "NetworkManager is enabled and networkd is disabled" {
   run podman run --rm --entrypoint sh "$IMAGE_UNDER_TEST" -c '
+    command -v nm-applet >/dev/null &&
     systemctl --root=/ is-enabled NetworkManager.service >/dev/null &&
     test -L /etc/systemd/system/multi-user.target.wants/NetworkManager.service &&
     systemctl --root=/ is-enabled arch-bootc-sync-x11-keymap.service >/dev/null &&
     test -L /etc/systemd/system/multi-user.target.wants/arch-bootc-sync-x11-keymap.service &&
     ! systemctl --root=/ is-enabled systemd-networkd.service >/dev/null &&
     test ! -L /etc/systemd/system/multi-user.target.wants/systemd-networkd.service
+  '
+  [ "$status" -eq 0 ]
+}
+
+@test "python3-validity is not boot-enabled" {
+  run podman run --rm --entrypoint sh "$IMAGE_UNDER_TEST" -c '
+    ! systemctl --root=/ is-enabled python3-validity.service >/dev/null &&
+    test ! -L /etc/systemd/system/multi-user.target.wants/python3-validity.service
   '
   [ "$status" -eq 0 ]
 }

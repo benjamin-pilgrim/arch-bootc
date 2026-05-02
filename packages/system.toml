@@ -13,6 +13,7 @@ packages = [
   "shadow",
   "openbsd-netcat",
   "networkmanager",
+  "network-manager-applet",
   "pipewire",
   "pipewire-alsa",
   "pipewire-pulse",
