@@ -69,6 +69,7 @@ FROM bootc-base AS final
 COPY --from=bootc-build /sysroot/ /
 COPY --from=kernel-manifest /tmp/out/packages-official-kernel-runtime.txt /tmp/packages-official-kernel-runtime.txt
 COPY --from=system-manifest /tmp/out/packages-official-system.txt /tmp/packages-official-system.txt
+ADD rootfs/ /
 
 #dracut runtime deps
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
@@ -87,8 +88,10 @@ RUN KERNEL_VERSION="$(ls -1 /usr/lib/modules | sort -V | tail -n 1)" && \
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    xargs -a /tmp/packages-official-system.txt -- pacman -Sy --noconfirm --needed && \
+    xargs -a /tmp/packages-official-system.txt -- pacman -Sy --noconfirm --needed --overwrite /usr/share/hypr/hyprland.conf --overwrite /usr/share/hypr/hyprlock.conf && \
     pacman -Scc --noconfirm
+
+ADD rootfs/ /
 
 # Apply offline systemd presets so the image ships with expected enabled units.
 RUN useradd --uid 1000 --create-home --shell /bin/bash --user-group makepkg && \
@@ -115,11 +118,11 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/home/makepkg/cache/go-build,uid=1000,gid=1000,mode=0775 \
     --mount=type=cache,target=/home/makepkg/cache/go-mod,uid=1000,gid=1000,mode=0775 \
     --mount=type=cache,target=/home/makepkg/cache/cargo,uid=1000,gid=1000,mode=0775 \
+    --mount=type=cache,target=/home/makepkg/cache/rustup,uid=1000,gid=1000,mode=0775 \
     bash /usr/libexec/build-aur.sh /tmp/packages-aur.txt
 
-RUN userdel makepkg
-
-ADD rootfs/ /
+RUN userdel --remove makepkg || true && \
+    sed -i '/^makepkg:/d' /etc/passwd /etc/shadow /etc/group /etc/gshadow
 
 # Apply offline systemd presets so the image ships with expected enabled units.
 RUN systemctl --root=/ preset-all
@@ -137,6 +140,20 @@ RUN sed -i 's|^HOME=.*|HOME=/var/home|' "/etc/default/useradd" && \
 
 # Discard trigger files for systemd-firstboot
 RUN rm -f /etc/locale.conf /var/log/pacman.log
+
+# Keep /var as a small seed for first boot. bootc copies image /var into
+# persistent state during install, and package-manager leftovers here can trip
+# composefs/fs-verity validation on Arch before the VM ever boots.
+RUN rm -rf \
+    /var/cache/* \
+    /var/db \
+    /var/lib/krb5kdc \
+    /var/log/* \
+    /var/tmp/* \
+    /tmp/*
+
+LABEL containers.bootc=1 \
+      ostree.bootable=1
 
 RUN bootc container lint
 RUN date > /build.time

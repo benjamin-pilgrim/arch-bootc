@@ -82,6 +82,53 @@ mise run host:upgrade
 
 Builds use `podman build --network=host` by default to avoid rootless DNS resolution failures during `pacman` steps. Override `BUILD_FLAGS` if you need different networking.
 
+## Composefs Verity Workaround
+
+This image intentionally uses the bootc composefs backend, but currently carries
+an Arch-specific initramfs workaround for Linux 7.0.x kernels.
+
+The upstream issue is tracked as
+[`bootc-dev/bootc#2174`](https://github.com/bootc-dev/bootc/issues/2174).
+Linux commit `f77f281b61183a5c0b87e6a4d101c70bd32c1c79` changed fs-verity
+state handling in a way that breaks composefs through overlayfs
+`verity=require`. The failure shows up during boot as messages like:
+
+```text
+overlayfs: lower file '...' has no fs-verity digest
+Failed to execute /sbin/init, giving up: Input/output error
+```
+
+This is a kernel/overlayfs/fs-verity regression, not a corrupt bootc image. The
+same composefs repository can be mounted directly with `mount.composefs`, while
+bootc's native initramfs setup path fails when overlayfs asks for strict verity
+validation.
+
+Until the kernel-side fix is available in Arch, the image overrides
+`bootc-root-setup.service` in the initramfs to run
+`/usr/lib/bootc/arch-composefs-setup`. That script still mounts the bootc
+composefs deployment selected by the `composefs=` kernel argument, but it does
+so via:
+
+```text
+mount -t composefs -o basedir=/sysroot/composefs/objects \
+  /sysroot/composefs/images/<deployment> /run/bootc-composefs-root
+```
+
+It then preserves the normal bootc state shape by mounting:
+
+- `/etc` from `/sysroot/state/deploy/<deployment>/etc`
+- `/var` from `/sysroot/state/os/default/var`
+- the physical root at `/sysroot`, remounted read-only
+
+This keeps bootc composefs bootable and leaves deployment selection driven by
+bootc's `composefs=` boot entry. The tradeoff is that this bypasses the broken
+strict overlayfs fs-verity enforcement path, so it should not be treated as the
+final sealed-root integrity model.
+
+Remove this workaround once a kernel with the overlayfs/fs-verity fix is in use
+and the native `/usr/lib/bootc/initramfs-setup setup-root` path boots cleanly
+again.
+
 ## Package Manifests
 
 Package inputs are split by concern under `packages/`:

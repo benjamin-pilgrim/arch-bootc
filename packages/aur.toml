@@ -17,4 +17,5 @@ packages = [
   "elephant-clipboard",
   "parsec-bin",
   "sublime-text-4",
+  "bootupd",
 ]

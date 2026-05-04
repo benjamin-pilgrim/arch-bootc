@@ -1,0 +1,85 @@
+#!/bin/sh
+set -eu
+
+sysroot=/sysroot
+target=
+cmdline=
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        setup-root)
+            shift
+            ;;
+        --sysroot)
+            sysroot="$2"
+            shift 2
+            ;;
+        --target)
+            target="$2"
+            shift 2
+            ;;
+        --cmdline)
+            cmdline="$2"
+            shift 2
+            ;;
+        *)
+            echo "arch-composefs-setup: unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [ -z "${target}" ]; then
+    target="${sysroot}"
+fi
+
+if [ -z "${cmdline}" ]; then
+    cmdline="$(cat /proc/cmdline)"
+fi
+
+deployment=
+for arg in ${cmdline}; do
+    case "${arg}" in
+        composefs=*)
+            deployment="${arg#composefs=}"
+            deployment="${deployment#\?}"
+            ;;
+    esac
+done
+
+if [ -z "${deployment}" ]; then
+    echo "arch-composefs-setup: missing composefs= kernel argument" >&2
+    exit 1
+fi
+
+mount_composefs_root() {
+    mount -t composefs \
+        -o "basedir=${sysroot}/composefs/objects" \
+        "${sysroot}/composefs/images/${deployment}" \
+        "$1"
+}
+
+bind_state() {
+    root="$1"
+    mount --bind "${root}/sysroot/state/deploy/${deployment}/etc" "${root}/etc"
+    mount --bind "${root}/sysroot/state/os/default/var" "${root}/var"
+    mount -o remount,ro,bind "${root}/sysroot"
+}
+
+if [ "${target}" != "${sysroot}" ]; then
+    mount_composefs_root "${target}"
+    mount --bind "${sysroot}" "${target}/sysroot"
+    bind_state "${target}"
+    exit 0
+fi
+
+mount --make-rprivate /
+
+newroot=/run/bootc-composefs-root
+rm -rf "${newroot}"
+mkdir -p "${newroot}"
+
+mount_composefs_root "${newroot}"
+mount --move "${sysroot}" "${newroot}/sysroot"
+bind_state "${newroot}"
+mount --move "${newroot}" "${sysroot}"

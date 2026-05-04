@@ -5,6 +5,9 @@ import pwd
 import re
 import subprocess
 import sys
+import threading
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -20,9 +23,24 @@ CACHE_XDG = HOME / "cache" / "xdg"
 CACHE_GO = HOME / "cache" / "go-build"
 CACHE_GOMOD = HOME / "cache" / "go-mod"
 CACHE_CARGO = HOME / "cache" / "cargo"
+CACHE_RUSTUP = HOME / "cache" / "rustup"
 INSTALL_LIST = CACHE_PKG / ".install-list"
 AUR_RPC = "https://aur.archlinux.org/rpc/v5"
+AUR_RPC_TIMEOUT = int(os.environ.get("AUR_RPC_TIMEOUT", "20"))
+AUR_RPC_RETRIES = int(os.environ.get("AUR_RPC_RETRIES", "3"))
 DEP_SPLIT_RE = re.compile(r"[<>=]+")
+
+
+def log(message):
+    print(f"[build-aur] {message}", flush=True)
+
+
+_heartbeat_stop = threading.Event()
+
+
+def heartbeat():
+    while not _heartbeat_stop.wait(30):
+        log("heartbeat: still running")
 
 
 def run(cmd, *, cwd=None, user=None, capture=False, check=True, env_extra=None):
@@ -52,7 +70,7 @@ def dep_name(dep_expr):
 
 def ensure_dirs():
     makepkg = pwd.getpwnam("makepkg")
-    for path in (CACHE_AUR, CACHE_SRC, CACHE_BUILD, CACHE_PKG, CACHE_XDG, CACHE_GO, CACHE_GOMOD, CACHE_CARGO):
+    for path in (CACHE_AUR, CACHE_SRC, CACHE_BUILD, CACHE_PKG, CACHE_XDG, CACHE_GO, CACHE_GOMOD, CACHE_CARGO, CACHE_RUSTUP):
         path.mkdir(parents=True, exist_ok=True)
         os.chown(path, makepkg.pw_uid, makepkg.pw_gid)
     os.umask(0o022)
@@ -80,12 +98,29 @@ def pacman_official_available(pkg_name):
 def install_official(packages):
     pkgs = sorted(set(packages))
     if pkgs:
+        log(f"install official deps: {' '.join(pkgs)}")
         run(["pacman", "-Sy", "--noconfirm", "--needed", *pkgs])
 
 
 def aur_rpc_json(url):
-    with urllib.request.urlopen(url) as response:
-        return json.load(response)
+    last_error = None
+    for attempt in range(1, AUR_RPC_RETRIES + 1):
+        log(f"aur rpc request attempt {attempt}/{AUR_RPC_RETRIES}: {url}")
+        started = time.monotonic()
+        try:
+            with urllib.request.urlopen(url, timeout=AUR_RPC_TIMEOUT) as response:
+                data = json.load(response)
+            elapsed = time.monotonic() - started
+            count = len(data.get("results", [])) if isinstance(data, dict) else "unknown"
+            log(f"aur rpc response in {elapsed:.1f}s: results={count}")
+            return data
+        except (TimeoutError, urllib.error.URLError, OSError) as exc:
+            elapsed = time.monotonic() - started
+            last_error = exc
+            log(f"aur rpc failure after {elapsed:.1f}s: {type(exc).__name__}: {exc}")
+            if attempt < AUR_RPC_RETRIES:
+                time.sleep(min(5, attempt))
+    raise RuntimeError(f"AUR RPC failed after {AUR_RPC_RETRIES} attempts: {last_error}")
 
 
 def aur_info(name):
@@ -158,6 +193,7 @@ def aur_repo_name(pkg_name):
 
 def update_repo(repo_name):
     repo_dir = CACHE_AUR / repo_name
+    log(f"sync repo {repo_name}")
     branch = remote_default_branch(repo_name)
     if (repo_dir / ".git").exists():
         # Cached AUR clones are disposable. Reset them to the fetched branch tip
@@ -299,7 +335,10 @@ def build_env_for_repo(info):
         "GOCACHE": str(CACHE_GO),
         "GOMODCACHE": str(CACHE_GOMOD),
         "CARGO_HOME": str(CACHE_CARGO),
+        "RUSTUP_HOME": str(CACHE_RUSTUP),
     }
+    if info.repo_name == "bootupd":
+        env["RUSTUP_TOOLCHAIN"] = "stable"
     if info.repo_name == "walker":
         # walker can trip an LLVM/rustc crash in ThinLTO on some builders.
         # Force a more conservative Rust build for this package only.
@@ -321,8 +360,16 @@ def build_repo(info):
     head = repo_head(info.repo_dir)
     artifacts = find_artifacts(info.pkgnames)
     if stamp_file.exists() and stamp_file.read_text().strip() == head and len(artifacts) >= len(info.pkgnames):
+        log(f"reuse cached artifacts for {info.repo_name} at {head[:12]}")
         return artifacts
 
+    log(f"build repo {info.repo_name} at {head[:12]}")
+    if info.repo_name == "bootupd":
+        run(
+            ["rustup", "toolchain", "install", "stable", "--profile", "minimal"],
+            user="makepkg",
+            env_extra=build_env_for_repo(info),
+        )
     run(
         ["bash", "-lc", "makepkg -sf --noconfirm --needed"],
         cwd=info.repo_dir,
@@ -333,10 +380,12 @@ def build_repo(info):
     if len(artifacts) < len(info.pkgnames):
         raise RuntimeError(f"repo '{info.repo_name}' did not produce all expected artifacts")
     stamp_file.write_text(f"{head}\n")
+    log("built artifacts for " f"{info.repo_name}: {' '.join(path.name for path in artifacts)}")
     return artifacts
 
 
 def install_artifacts(artifacts):
+    log("install artifacts: " + " ".join(path.name for path in artifacts))
     run(["pacman", "-U", "--noconfirm", *[str(path) for path in artifacts]])
 
 
@@ -346,9 +395,6 @@ def cleanup_path(path):
 
 
 def cleanup_after_install(info, artifacts):
-    for artifact in artifacts:
-        cleanup_path(artifact)
-
     cleanup_path(CACHE_BUILD / info.repo_name)
     cleanup_path(info.repo_dir / "pkg")
     cleanup_path(info.repo_dir / "src")
@@ -360,36 +406,49 @@ def read_requested_repos():
         pkg = raw.strip()
         if not pkg or pkg.startswith("#"):
             continue
+        log(f"lookup requested package {pkg}")
         repo_name = aur_repo_name(pkg)
         if not repo_name:
             raise RuntimeError(f"unable to resolve requested AUR package '{pkg}'")
+        log(f"requested package {pkg} resolved to repo {repo_name}")
         repos.append(repo_name)
     return repos
 
 
 def main():
+    hb = threading.Thread(target=heartbeat, daemon=True)
+    hb.start()
     ensure_dirs()
     global top_level_repos
-    top_level_repos = read_requested_repos()
+    try:
+        top_level_repos = read_requested_repos()
+        log("requested repos: " + " ".join(top_level_repos))
 
-    resolved = []
-    for repo_name in top_level_repos:
-        resolve_repo(repo_name, resolved, set())
+        resolved = []
+        for repo_name in top_level_repos:
+            log(f"resolve repo {repo_name}")
+            resolve_repo(repo_name, resolved, set())
 
-    install_official(official_needed)
+        log("resolved build order: " + " ".join(resolved))
+        install_official(official_needed)
 
-    seen = set()
-    for repo_name in resolved:
-        if repo_name in seen:
-            continue
-        seen.add(repo_name)
-        info = load_repo(repo_name)
-        artifacts = build_repo(info)
-        install_artifacts(artifacts)
-        cleanup_after_install(info, artifacts)
+        seen = set()
+        for repo_name in resolved:
+            if repo_name in seen:
+                continue
+            seen.add(repo_name)
+            info = load_repo(repo_name)
+            log(f"process repo {repo_name}")
+            artifacts = build_repo(info)
+            install_artifacts(artifacts)
+            cleanup_after_install(info, artifacts)
+            log(f"cleanup repo {repo_name}")
 
-    run(["find", str(CACHE_PKG), "-maxdepth", "1", "-type", "f", "-name", "*-debug-*.pkg.tar.zst", "-delete"])
-    INSTALL_LIST.write_text("")
+        run(["find", str(CACHE_PKG), "-maxdepth", "1", "-type", "f", "-name", "*-debug-*.pkg.tar.zst", "-delete"])
+        INSTALL_LIST.write_text("")
+        log("aur stage complete")
+    finally:
+        _heartbeat_stop.set()
 
 
 if __name__ == "__main__":
