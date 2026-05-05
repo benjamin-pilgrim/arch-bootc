@@ -57,6 +57,7 @@ fill_from_x11conf() {
 }
 
 write_keyboard_dropin() {
+    mkdir -p "$dropin_dir"
     tmp_keyboard_dropin="$(mktemp "$dropin_dir/.20-system-keyboard.conf.XXXXXX")"
     cat >"$tmp_keyboard_dropin" <<EOF
 # Generated from system keyboard defaults.

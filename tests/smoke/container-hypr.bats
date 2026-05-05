@@ -70,6 +70,55 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "x11 keyboard sync recreates runtime drop-in dir before writing keyboard data" {
+  run podman run --rm --entrypoint sh "$IMAGE_UNDER_TEST" -lc '
+    set -eu
+    bindir="$(mktemp -d)"
+    state="$(mktemp)"
+    log="$(mktemp)"
+    printf unset >"$state"
+    cat >"$bindir/localectl" <<'\''EOF'\''
+#!/bin/sh
+set -eu
+state="${LOCALCTL_STATE:?}"
+log="${LOCALCTL_LOG:?}"
+case "$1" in
+  status)
+    if [ "$(cat "$state")" = "unset" ]; then
+      cat <<'\''STATUS'\''
+System Locale: LANG=C.UTF-8
+VC Keymap: uk
+X11 Layout: (unset)
+STATUS
+    else
+      cat <<'\''STATUS'\''
+System Locale: LANG=C.UTF-8
+VC Keymap: uk
+X11 Layout: gb
+X11 Model: pc105
+STATUS
+    fi
+    ;;
+  set-keymap)
+    printf "%s\n" "$*" >>"$log"
+    rm -rf /run/hypr
+    printf set >"$state"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+EOF
+    chmod +x "$bindir/localectl"
+    LOCALCTL_STATE="$state" LOCALCTL_LOG="$log" PATH="$bindir:$PATH" /usr/libexec/sync-x11-keymap-from-vconsole.sh
+    grep -Fx "set-keymap uk" "$log"
+    test -f /run/hypr/override.d/00-default.conf
+    grep -Fx "    kb_layout = gb" /run/hypr/override.d/20-system-keyboard.conf
+    grep -Fx "    kb_model = pc105" /run/hypr/override.d/20-system-keyboard.conf
+  '
+  [ "$status" -eq 0 ]
+}
+
 @test "x11 keyboard sync leaves a runtime sentinel even without keyboard data" {
   run podman run --rm --entrypoint sh "$IMAGE_UNDER_TEST" -lc '
     set -eu
