@@ -90,6 +90,21 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "account databases are internally consistent" {
+  run podman run --rm --entrypoint sh "$IMAGE_UNDER_TEST" -lc '
+    set -eu
+    pwck -r
+    grpck -r
+    ! getent passwd makepkg >/dev/null
+    ! getent group makepkg >/dev/null
+    ! grep -q "^makepkg:" /etc/shadow
+    if [ -e /etc/gshadow ]; then
+      ! grep -q "^makepkg:" /etc/gshadow
+    fi
+  '
+  [ "$status" -eq 0 ]
+}
+
 @test "desktop override references system config paths" {
   run podman run --rm --entrypoint sh "$IMAGE_UNDER_TEST" -c '
     grep -F "hyprpaper --config /usr/share/hypr/hyprpaper.conf" /usr/share/hypr/override.d/10-desktop.conf &&

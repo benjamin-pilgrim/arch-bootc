@@ -121,8 +121,13 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/home/makepkg/cache/rustup,uid=1000,gid=1000,mode=0775 \
     bash /usr/libexec/build-aur.sh /tmp/packages-aur.txt
 
-RUN userdel --remove makepkg || true && \
-    sed -i '/^makepkg:/d' /etc/passwd /etc/shadow /etc/group /etc/gshadow
+RUN userdel --force --remove makepkg 2>/dev/null || true && \
+    groupdel makepkg 2>/dev/null || true && \
+    for db in /etc/passwd /etc/shadow /etc/group /etc/gshadow /etc/subuid /etc/subgid; do \
+        [ ! -e "$db" ] || sed -i '/^makepkg:/d' "$db"; \
+    done && \
+    pwck -r && \
+    grpck -r
 
 # Apply offline systemd presets so the image ships with expected enabled units.
 RUN systemctl --root=/ preset-all
