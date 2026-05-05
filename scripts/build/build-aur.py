@@ -5,7 +5,6 @@ import pwd
 import re
 import subprocess
 import sys
-import threading
 import time
 import urllib.error
 import urllib.parse
@@ -33,14 +32,6 @@ DEP_SPLIT_RE = re.compile(r"[<>=]+")
 
 def log(message):
     print(f"[build-aur] {message}", flush=True)
-
-
-_heartbeat_stop = threading.Event()
-
-
-def heartbeat():
-    while not _heartbeat_stop.wait(30):
-        log("heartbeat: still running")
 
 
 def run(cmd, *, cwd=None, user=None, capture=False, check=True, env_extra=None):
@@ -416,39 +407,34 @@ def read_requested_repos():
 
 
 def main():
-    hb = threading.Thread(target=heartbeat, daemon=True)
-    hb.start()
     ensure_dirs()
     global top_level_repos
-    try:
-        top_level_repos = read_requested_repos()
-        log("requested repos: " + " ".join(top_level_repos))
+    top_level_repos = read_requested_repos()
+    log("requested repos: " + " ".join(top_level_repos))
 
-        resolved = []
-        for repo_name in top_level_repos:
-            log(f"resolve repo {repo_name}")
-            resolve_repo(repo_name, resolved, set())
+    resolved = []
+    for repo_name in top_level_repos:
+        log(f"resolve repo {repo_name}")
+        resolve_repo(repo_name, resolved, set())
 
-        log("resolved build order: " + " ".join(resolved))
-        install_official(official_needed)
+    log("resolved build order: " + " ".join(resolved))
+    install_official(official_needed)
 
-        seen = set()
-        for repo_name in resolved:
-            if repo_name in seen:
-                continue
-            seen.add(repo_name)
-            info = load_repo(repo_name)
-            log(f"process repo {repo_name}")
-            artifacts = build_repo(info)
-            install_artifacts(artifacts)
-            cleanup_after_install(info, artifacts)
-            log(f"cleanup repo {repo_name}")
+    seen = set()
+    for repo_name in resolved:
+        if repo_name in seen:
+            continue
+        seen.add(repo_name)
+        info = load_repo(repo_name)
+        log(f"process repo {repo_name}")
+        artifacts = build_repo(info)
+        install_artifacts(artifacts)
+        cleanup_after_install(info, artifacts)
+        log(f"cleanup repo {repo_name}")
 
-        run(["find", str(CACHE_PKG), "-maxdepth", "1", "-type", "f", "-name", "*-debug-*.pkg.tar.zst", "-delete"])
-        INSTALL_LIST.write_text("")
-        log("aur stage complete")
-    finally:
-        _heartbeat_stop.set()
+    run(["find", str(CACHE_PKG), "-maxdepth", "1", "-type", "f", "-name", "*-debug-*.pkg.tar.zst", "-delete"])
+    INSTALL_LIST.write_text("")
+    log("aur stage complete")
 
 
 if __name__ == "__main__":
