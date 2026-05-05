@@ -1,6 +1,6 @@
 [official]
 runtime = [
-  "linux",
+  "linux-lts",
   "linux-firmware",
   "intel-ucode",
   "cpio",
