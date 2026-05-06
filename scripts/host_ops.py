@@ -13,8 +13,8 @@ BASE_DIR = SCRIPTS_DIR.parent
 BOOTABLE = BASE_DIR / "bootable.img"
 STAMP = BASE_DIR / "bootable.img.image-id"
 BOOTABLE_SIZE = "40G"
-BUILD_TMPDIR = pathlib.Path("/tmp/arch-bootc-build")
-HOST_BUILD_TMPDIR = pathlib.Path("/var/tmp/arch-bootc-build")
+BUILD_TMPDIR = pathlib.Path(os.environ.get("BUILD_TMPDIR", str(BASE_DIR / ".build" / "tmp")))
+HOST_BUILD_TMPDIR = pathlib.Path(os.environ.get("HOST_BUILD_TMPDIR", "/var/tmp/arch-bootc-build"))
 BUILD_LOG = BASE_DIR / "build.log"
 FILESYSTEM = "ext4"
 

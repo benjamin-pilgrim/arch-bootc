@@ -3,6 +3,7 @@ cosign.key
 *.img.image-id
 *.img.raw
 build.log
+.build/
 mkosi.crt
 mkosi.key
 __pycache__/
