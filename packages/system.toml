@@ -86,6 +86,7 @@ packages = [
   "libqalculate",
   "fd",
   "imagemagick",
+  "starship",
   "wl-clipboard",
   "wtype",
   "libnotify",

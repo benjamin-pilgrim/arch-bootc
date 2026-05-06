@@ -90,6 +90,21 @@ def test_hypr_user_bootstrap_script_is_present_and_idempotent(vm_guest: SshGuest
     )
 
 
+def test_starship_prompt_is_system_managed(vm_guest: SshGuest) -> None:
+    vm_guest.systemd_run(
+        r"""
+        set -eu
+        command -v starship >/dev/null
+        test -f /etc/starship.toml
+        test -f /etc/profile.d/starship.sh
+        grep -Fx "palette = 'gruvbox_dark'" /etc/starship.toml
+        unset STARSHIP_CONFIG
+        . /etc/profile.d/starship.sh
+        test "$STARSHIP_CONFIG" = /etc/starship.toml
+        """
+    )
+
+
 def test_hypr_runtime_dependencies_are_installed(vm_guest: SshGuest) -> None:
     vm_guest.systemd_run("command -v Hyprland >/dev/null && command -v uwsm >/dev/null && command -v hyprctl >/dev/null")
 

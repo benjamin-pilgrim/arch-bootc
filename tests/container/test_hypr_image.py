@@ -31,6 +31,22 @@ def test_hypr_required_files_exist(container: PodmanImage) -> None:
     )
 
 
+def test_starship_prompt_is_system_managed(container: PodmanImage) -> None:
+    container.shell(
+        """
+        set -eu
+        command -v starship >/dev/null
+        test -f /etc/starship.toml
+        test -f /etc/profile.d/starship.sh
+        grep -Fx "palette = 'gruvbox_dark'" /etc/starship.toml
+        grep -Fx 'Arch = "󰣇 "' /etc/starship.toml
+        unset STARSHIP_CONFIG
+        . /etc/profile.d/starship.sh
+        test "$STARSHIP_CONFIG" = /etc/starship.toml
+        """
+    )
+
+
 def test_waybar_ai_statusbar_support_is_system_managed(container: PodmanImage) -> None:
     container.shell(
         """
