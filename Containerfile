@@ -54,9 +54,9 @@ RUN BOOTC_VERSION="$(cat /tmp/bootc-version.txt)" && \
 ENV DESTDIR=/sysroot
 RUN mkdir -p /sysroot
 
-RUN --mount=type=cache,target=/root/.cargo/registry \
-    --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/tmp/bootc/target \
+RUN --mount=type=cache,id=arch-bootc-bootc-cargo-registry,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,id=arch-bootc-bootc-cargo-git,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,id=arch-bootc-bootc-target,target=/tmp/bootc/target,sharing=locked \
     CARGO_HOME=/root/.cargo \
     CARGO_INCREMENTAL=0 \
     CARGO_BUILD_JOBS=2 \
