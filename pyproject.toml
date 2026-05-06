@@ -1,0 +1,22 @@
+[project]
+name = "arch-bootc"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "container: tests that inspect the built container image",
+    "vm: tests that run against a booted guest over SSH",
+    "graphical: tests that require a graphical guest session",
+    "slow: long-running image, qemu, or guest smoke tests",
+]

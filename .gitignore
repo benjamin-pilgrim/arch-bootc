@@ -7,3 +7,6 @@ mkosi.crt
 mkosi.key
 __pycache__/
 .idea
+.pytest_cache/
+.uv-cache/
+.venv/

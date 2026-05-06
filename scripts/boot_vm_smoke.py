@@ -3,15 +3,14 @@ from __future__ import annotations
 
 import atexit
 import json
-import os
-import shutil
 import signal
 import subprocess
 
+from host_ops import podman_cmd
 from vm_smoke.config import Config, RuntimeState
 from vm_smoke.graphical import bootstrap_graphical_session
 from vm_smoke.qemu import prepare_qemu_runtime, start_vm
-from vm_smoke.runtime import cleanup, ensure_image_and_bootable, ensure_vm_alive, run_bats, run_interactive_mode, validate_environment
+from vm_smoke.runtime import cleanup, ensure_image_and_bootable, ensure_vm_alive, run_interactive_mode, run_pytest, validate_environment
 from vm_smoke.ssh import wait_for_ssh_auth, wait_for_ssh_banner
 
 
@@ -37,6 +36,12 @@ class BootVmSmoke:
             print(message, flush=True)
 
     def run(self) -> int:
+        self.prepare_and_start()
+        if not self.cfg.run_smoke_tests:
+            return run_interactive_mode(self)
+        return run_pytest(self)
+
+    def prepare_and_start(self) -> None:
         validate_environment(self)
         ensure_image_and_bootable(self)
         prepare_qemu_runtime(self)
@@ -45,9 +50,6 @@ class BootVmSmoke:
         wait_for_ssh_auth(self)
         if self.cfg.graphical_session_smoke:
             bootstrap_graphical_session(self)
-        if not self.cfg.run_smoke_tests:
-            return run_interactive_mode(self)
-        return run_bats(self)
 
     def run_cmd(
         self,
@@ -71,15 +73,7 @@ class BootVmSmoke:
         )
 
     def podman_cmd(self, args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
-        cmd = ["podman", *args]
-        if self.cfg.use_run0_podman and os.getuid() != 0:
-            if shutil.which("run0"):
-                cmd = ["run0", *cmd]
-            elif shutil.which("sudo") and subprocess.run(
-                ["sudo", "-n", "true"], capture_output=True
-            ).returncode == 0:
-                cmd = ["sudo", *cmd]
-        return self.run_cmd(cmd, **kwargs)
+        return self.run_cmd(podman_cmd(args), **kwargs)
 
     def podman_image_id(self, image_ref: str) -> str:
         result = self.podman_cmd(["image", "inspect", "--format", "json", image_ref], capture_output=True)
@@ -95,7 +89,11 @@ class BootVmSmoke:
 
 
 def main() -> int:
-    runner = BootVmSmoke(Config())
+    return run_config(Config())
+
+
+def run_config(cfg: Config) -> int:
+    runner = BootVmSmoke(cfg)
     return runner.run()
 
 

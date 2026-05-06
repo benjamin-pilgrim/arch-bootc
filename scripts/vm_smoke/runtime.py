@@ -10,6 +10,7 @@ import sys
 import time
 from typing import TYPE_CHECKING
 
+from host_ops import BASE_DIR, script_path
 from vm_smoke.config import env_flag
 from vm_smoke.graphical import print_graphical_guest_diagnostics
 from vm_smoke.ssh import base_ssh_cmd, print_sanitized_qemu_log_tail
@@ -63,10 +64,7 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
         exists = runner.podman_cmd(["image", "exists", runner.cfg.image_ref], check=False)
         if exists.returncode != 0:
             runner.log(f"Image {runner.cfg.image_ref} not found; building it now...")
-            env = os.environ.copy()
-            env["BUILD_IMAGE_NAME"] = runner.cfg.image_name
-            env["BUILD_IMAGE_TAG"] = runner.cfg.image_tag
-            runner.run_cmd(["mise", "run", "image:build"], env=env)
+            runner.run_cmd([sys.executable, str(script_path("build_image.py"))], env=None)
         runner.image_id = runner.podman_image_id(runner.cfg.image_ref)
         verify = runner.podman_cmd(
             [
@@ -105,15 +103,12 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
             reason = f"Built image changed since {runner.cfg.bootable} was generated"
         if regen:
             runner.log(f"{reason}; generating bootable image now...")
-            env = os.environ.copy()
-            env["BUILD_IMAGE_NAME"] = runner.cfg.image_name
-            env["BUILD_IMAGE_TAG"] = runner.cfg.image_tag
-            runner.run_cmd(["mise", "run", "generate-bootable-image"], env=env)
+            runner.run_cmd([sys.executable, str(script_path("generate_bootable_image.py"))], env=None)
             runner.cfg.bootable_image_id_file.write_text(f"{runner.image_id}\n")
     elif not runner.cfg.bootable.exists():
         raise SystemExit(
             f"Sandbox mode requires an existing bootable image at {runner.cfg.bootable}.\n"
-            f"Generate it outside the sandbox first with: sudo BUILD_IMAGE_TAG={runner.cfg.image_tag} mise run image:artifact"
+            "Generate it outside the sandbox first with: sudo mise run image:artifact"
         )
 
     runner.cfg.bootable = runner.cfg.bootable.resolve()
@@ -123,7 +118,7 @@ def ensure_image_and_bootable(runner: BootVmSmoke) -> None:
         if not runner.cfg.bootable_image_id_file.exists() or not runner.cfg.bootable_image_id_file.read_text().strip():
             raise SystemExit(
                 f"Sandbox mode requires a non-empty artifact stamp at {runner.cfg.bootable_image_id_file}.\n"
-                f"Generate it outside the sandbox first with: sudo BUILD_IMAGE_TAG={runner.cfg.image_tag} mise run image:artifact"
+                "Generate it outside the sandbox first with: sudo mise run image:artifact"
             )
         runner.debug("Using sandbox VM artifact:")
         runner.debug(f"  disk: {runner.cfg.bootable}")
@@ -143,23 +138,37 @@ def run_interactive_mode(runner: BootVmSmoke) -> int:
     return status
 
 
-def run_bats(runner: BootVmSmoke) -> int:
-    env = os.environ.copy()
-    env["BOOTC_VM_SSH_COMMAND"] = shlex.join(base_ssh_cmd(runner))
-    env["BOOTC_VM_BOOT_TIMEOUT_S"] = str(runner.cfg.boot_timeout)
-    env["BOOTC_VM_DIRECT_KERNEL_BOOT"] = runner.cfg.direct_kernel_boot
-    env["BOOTC_VM_GRAPHICAL_SESSION_SMOKE"] = "1" if runner.cfg.graphical_session_smoke else "0"
-    env["BOOTC_VM_HOMED_FIRSTBOOT_USER"] = runner.cfg.homed_firstboot_user
-    env["BOOTC_VM_HOMED_FIRSTBOOT_UID"] = runner.cfg.homed_firstboot_uid
-    bats = subprocess.Popen(["mise", "exec", "--", "bats", "tests/smoke/vm-bootc.bats"], env=env)
+def run_pytest(runner: BootVmSmoke) -> int:
+    pytest_args = [
+        "tests/vm",
+        "--bootc-vm-ssh-command",
+        shlex.join(base_ssh_cmd(runner)),
+        "--bootc-vm-boot-timeout",
+        str(runner.cfg.boot_timeout),
+        "--bootc-vm-command-timeout",
+        "20",
+        "--bootc-vm-direct-kernel-boot",
+        runner.cfg.direct_kernel_boot,
+        "--bootc-vm-homed-user",
+        runner.cfg.homed_firstboot_user,
+        "--bootc-vm-homed-uid",
+        runner.cfg.homed_firstboot_uid,
+        "--bootc-vm-allow-failed-system-units",
+        "^$",
+        "--bootc-vm-allow-failed-user-units",
+        "^$",
+    ]
+    if runner.cfg.graphical_session_smoke:
+        pytest_args.append("--bootc-vm-graphical")
+    pytest = subprocess.Popen([sys.executable, "-m", "pytest", *pytest_args], cwd=BASE_DIR)
     assert runner.state.vm_proc is not None
-    while bats.poll() is None:
+    while pytest.poll() is None:
         if runner.state.vm_proc.poll() is not None:
             print("mkosi/qemu exited before smoke tests completed")
             print_graphical_guest_diagnostics(runner)
             print_sanitized_qemu_log_tail(runner)
-            bats.terminate()
-            bats.wait(timeout=5)
+            pytest.terminate()
+            pytest.wait(timeout=5)
             return 1
         try:
             text = runner.state.log_file.read_text(errors="replace")
@@ -170,11 +179,11 @@ def run_bats(runner: BootVmSmoke) -> int:
             print_graphical_guest_diagnostics(runner)
             print_sanitized_qemu_log_tail(runner)
             runner.state.vm_proc.terminate()
-            bats.terminate()
-            bats.wait(timeout=5)
+            pytest.terminate()
+            pytest.wait(timeout=5)
             return 1
         time.sleep(2)
-    status = bats.wait()
+    status = pytest.wait()
     if status != 0:
         print_graphical_guest_diagnostics(runner)
     else:

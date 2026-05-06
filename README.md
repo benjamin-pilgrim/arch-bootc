@@ -35,11 +35,11 @@ mise run run:vm:graphical
 Additional test entry points:
 
 ```bash
-# Container smoke tests against a chosen image tag
-BUILD_IMAGE_NAME=arch-bootc mise run test:container
+# Container smoke tests against the local image
+mise run test:container
 
 # VM smoke tests against an already booted guest over SSH
-BOOTC_VM_SSH='root@127.0.0.1 -p 2222' mise run test:vm
+mise run test:vm -- --bootc-vm-ssh-command 'ssh -p 2222 root@127.0.0.1'
 
 # Sandbox VM smoke against an existing stamped artifact
 mise run test:vm:sandbox
@@ -51,8 +51,8 @@ mise run test:vm:sandbox-graphical
 Useful overrides:
 
 ```bash
-# Optional: if SSH user is non-root, prefix privileged commands
-BOOTC_VM_ROOT_PREFIX='sudo -n' BOOTC_VM_SSH='user@vm' mise run test:vm
+# Optional: if SSH user is non-root, prefix privileged guest commands
+mise run test:vm -- --bootc-vm-ssh-command 'ssh user@vm' --bootc-vm-root-prefix 'sudo -n'
 
 # Optional: choose a different forwarded SSH port or user
 BOOTC_VM_SSH_PORT=2223 BOOTC_VM_SSH_USER=root mise run run:vm:graphical
@@ -80,7 +80,9 @@ Host-mutating workflow:
 mise run host:upgrade
 ```
 
-Builds use `podman build --network=host` by default to avoid rootless DNS resolution failures during `pacman` steps. Override `BUILD_FLAGS` if you need different networking.
+Builds use `podman build --network=host` to avoid rootless DNS resolution failures during `pacman` steps.
+Local workflows intentionally use fixed repo defaults: `localhost/arch-bootc:local`,
+`bootable.img`, `bootable.img.image-id`, a 40G sparse disk, and `ext4`.
 
 ## Composefs Kernel Choice
 
