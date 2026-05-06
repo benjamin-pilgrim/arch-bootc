@@ -52,6 +52,9 @@ def test_hypr_system_configuration_exists_and_matches_expected_layering(vm_guest
         test -f /usr/share/hypr/hyprpaper.conf
         test -x /usr/libexec/sync-x11-keymap-from-vconsole.sh
         test -x /usr/share/hypr/scripts/terminal-from-active
+        test -x /usr/share/hypr/scripts/browser-tab-to-chrome-app
+        command -v lsof >/dev/null
+        command -v wtype >/dev/null
         test -f /usr/share/backgrounds/arch-bootc/wallpaper.png
         """
     )

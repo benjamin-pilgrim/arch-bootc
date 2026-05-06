@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
+import shlex
 import subprocess
+import sys
+from collections import deque
 from pathlib import Path
 
 LAUNCHER = ["uwsm", "app", "--", "kitty"]
+UUID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
 
 
 def run_capture(cmd: list[str]) -> str:
@@ -13,6 +18,11 @@ def run_capture(cmd: list[str]) -> str:
         return proc.stdout
     except FileNotFoundError:
         return ""
+
+
+def run_lines(cmd: list[str]) -> list[str]:
+    out = run_capture(cmd)
+    return [line.strip() for line in out.splitlines() if line.strip()]
 
 
 def active_window() -> dict:
@@ -75,13 +85,113 @@ def resolve_cwd(win: dict) -> str | None:
     return cwd_from_title(title)
 
 
-def main() -> int:
-    win = active_window()
-    cwd = resolve_cwd(win)
+def direct_children(pid: int) -> list[int]:
+    children = []
+    for raw in run_lines(["pgrep", "-P", str(pid)]):
+        try:
+            children.append(int(raw))
+        except ValueError:
+            continue
+    return children
+
+
+def descendants(root_pid: int) -> list[int]:
+    seen: set[int] = set()
+    order: list[int] = []
+    q: deque[int] = deque([root_pid])
+
+    while q:
+        pid = q.popleft()
+        for child in direct_children(pid):
+            if child in seen:
+                continue
+            seen.add(child)
+            order.append(child)
+            q.append(child)
+
+    return order
+
+
+def process_comm(pid: int) -> str:
+    out = run_capture(["ps", "-p", str(pid), "-o", "comm="])
+    return out.strip()
+
+
+def find_descendant_pid_by_comm(root_pid: int, comm: str) -> int | None:
+    for pid in descendants(root_pid):
+        if process_comm(pid) == comm:
+            return pid
+    return None
+
+
+def codex_session_id_from_pid(pid: int) -> str | None:
+    session_path = None
+    for line in run_lines(["lsof", "-p", str(pid)]):
+        if "/.codex/sessions/" in line and line.endswith(".jsonl"):
+            session_path = line.split()[-1]
+            break
+
+    if not session_path:
+        return None
+
+    match = UUID_RE.search(session_path)
+    return match.group(1) if match else None
+
+
+def active_codex_session_id(win: dict) -> str | None:
+    try:
+        root_pid = int(win.get("pid", 0))
+    except (TypeError, ValueError):
+        return None
+
+    if root_pid <= 0:
+        return None
+
+    codex_pid = find_descendant_pid_by_comm(root_pid, "codex")
+    if not codex_pid:
+        return None
+
+    return codex_session_id_from_pid(codex_pid)
+
+
+def is_codex_window(win: dict) -> bool:
+    title = str(win.get("title") or "").lower()
+    return win.get("class") == "kitty" and "codex" in title
+
+
+def launch_terminal(cwd: str | None = None, shell_cmd: str | None = None) -> None:
     cmd = list(LAUNCHER)
     if cwd:
         cmd.extend(["--directory", cwd])
+    if shell_cmd:
+        cmd.extend(["sh", "-lc", shell_cmd])
     os.execvp(cmd[0], cmd)
+
+
+def main() -> int:
+    mode = sys.argv[1] if len(sys.argv) > 1 else "normal"
+    dry_run = os.environ.get("TERMINAL_FROM_ACTIVE_DRY_RUN") == "1"
+
+    win = active_window()
+    cwd = resolve_cwd(win)
+    session_id = active_codex_session_id(win)
+
+    if dry_run:
+        print(f"resolved_cwd={cwd if cwd else '<none>'}")
+        print(f"mode={mode}")
+        print(f"resolved_codex_session_id={session_id if session_id else '<none>'}")
+        return 0
+
+    if mode == "new-codex":
+        launch_terminal(cwd=cwd, shell_cmd="codex")
+
+    if mode == "fork-codex" and is_codex_window(win):
+        if session_id:
+            launch_terminal(cwd=cwd, shell_cmd=f"codex fork {shlex.quote(session_id)}")
+        launch_terminal(cwd=cwd, shell_cmd="codex fork --last")
+
+    launch_terminal(cwd=cwd)
+    return 0
 
 
 if __name__ == "__main__":

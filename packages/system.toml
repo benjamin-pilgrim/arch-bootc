@@ -87,7 +87,9 @@ packages = [
   "fd",
   "imagemagick",
   "wl-clipboard",
+  "wtype",
   "libnotify",
+  "lsof",
   "ffmpeg4.4",
   "chromium",
 ]

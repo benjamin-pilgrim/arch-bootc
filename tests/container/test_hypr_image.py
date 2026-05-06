@@ -20,6 +20,9 @@ def test_hypr_required_files_exist(container: PodmanImage) -> None:
         test -f /usr/share/hypr/hyprpaper.conf
         test -f /usr/share/hypr/xdph.conf
         test -x /usr/share/hypr/scripts/terminal-from-active
+        test -x /usr/share/hypr/scripts/browser-tab-to-chrome-app
+        command -v lsof >/dev/null
+        command -v wtype >/dev/null
         test -f /usr/share/backgrounds/arch-bootc/wallpaper.png
         test -f /etc/profile.d/hypr-user-dropins.sh
         test -f /etc/skel/.config/hypr/hyprland.conf.d/00-default.conf
@@ -205,6 +208,9 @@ def test_desktop_override_references_system_config_paths(container: PodmanImage)
         """
         grep -F "hyprpaper --config /usr/share/hypr/hyprpaper.conf" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "hyprlock --config /usr/share/hypr/hyprlock.conf" /usr/share/hypr/override.d/10-desktop.conf
+        grep -F "/usr/share/hypr/scripts/terminal-from-active fork-codex" /usr/share/hypr/override.d/10-desktop.conf
+        grep -F "/usr/share/hypr/scripts/terminal-from-active new-codex" /usr/share/hypr/override.d/10-desktop.conf
+        grep -F "/usr/share/hypr/scripts/browser-tab-to-chrome-app" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "preload = /usr/share/backgrounds/arch-bootc/wallpaper.png" /usr/share/hypr/hyprpaper.conf
         grep -F "path = /usr/share/backgrounds/arch-bootc/wallpaper.png" /usr/share/hypr/hyprlock.conf
         """
