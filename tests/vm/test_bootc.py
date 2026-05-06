@@ -105,6 +105,27 @@ def test_starship_prompt_is_system_managed(vm_guest: SshGuest) -> None:
     )
 
 
+def test_ssh_client_config_is_system_managed(vm_guest: SshGuest) -> None:
+    vm_guest.systemd_run(
+        r"""
+        set -eu
+        command -v ssh >/dev/null
+        command -v aws >/dev/null
+        command -v session-manager-plugin >/dev/null
+        test -f /etc/ssh/ssh_config.d/10-arch-bootc.conf
+        grep -Fx "    IdentityAgent ~/.1password/agent.sock" /etc/ssh/ssh_config.d/10-arch-bootc.conf
+        grep -F "aws ec2-instance-connect send-ssh-public-key --instance-id %h" /etc/ssh/ssh_config.d/10-arch-bootc.conf
+        grep -F "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p'" /etc/ssh/ssh_config.d/10-arch-bootc.conf
+        ssh -F /etc/ssh/ssh_config -G i-0123456789abcdef0 >/tmp/ssh-i.out
+        grep -E "^identityagent .*/\\.1password/agent\\.sock$" /tmp/ssh-i.out
+        grep -F 'proxycommand sh -c "aws ec2-instance-connect send-ssh-public-key --instance-id' /tmp/ssh-i.out
+        ssh -F /etc/ssh/ssh_config -G mi-0123456789abcdef0 >/tmp/ssh-mi.out
+        grep -E "^identityagent .*/\\.1password/agent\\.sock$" /tmp/ssh-mi.out
+        grep -F 'proxycommand sh -c "aws ssm start-session --target' /tmp/ssh-mi.out
+        """
+    )
+
+
 def test_hypr_runtime_dependencies_are_installed(vm_guest: SshGuest) -> None:
     vm_guest.systemd_run("command -v Hyprland >/dev/null && command -v uwsm >/dev/null && command -v hyprctl >/dev/null")
 

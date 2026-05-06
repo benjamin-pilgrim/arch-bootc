@@ -21,6 +21,7 @@ packages = [
   "pavucontrol",
   "wireplumber",
   "openssh",
+  "aws-cli-v2",
   "man",
   "nano",
   "vim",

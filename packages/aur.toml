@@ -2,6 +2,7 @@
 packages = [
   "1password",
   "1password-cli",
+  "aws-session-manager-plugin",
   "open-fprintd",
   "python-validity",
   "jetbrains-toolbox",
