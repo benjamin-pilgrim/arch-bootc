@@ -231,6 +231,8 @@ def test_desktop_override_references_system_config_paths(container: PodmanImage)
         grep -F "/usr/share/hypr/scripts/terminal-from-active fork-codex" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "/usr/share/hypr/scripts/terminal-from-active new-codex" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "/usr/share/hypr/scripts/browser-tab-to-chrome-app" /usr/share/hypr/override.d/10-desktop.conf
+        grep -F "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+" /usr/share/hypr/override.d/10-desktop.conf
+        grep -F "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "preload = /usr/share/backgrounds/arch-bootc/wallpaper.png" /usr/share/hypr/hyprpaper.conf
         grep -F "path = /usr/share/backgrounds/arch-bootc/wallpaper.png" /usr/share/hypr/hyprlock.conf
         """
