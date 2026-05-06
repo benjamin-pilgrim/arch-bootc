@@ -1,0 +1,16 @@
+{
+    "custom/codex-usage": {
+        "interval": 60,
+        "return-type": "json",
+        "exec": "/usr/libexec/arch-bootc-codex-usage",
+        "exec-on-event": true,
+        "tooltip": true
+    },
+    "custom/claude-usage": {
+        "interval": 10,
+        "return-type": "json",
+        "exec": "/usr/libexec/arch-bootc-claude-usage",
+        "exec-on-event": true,
+        "tooltip": true
+    }
+}

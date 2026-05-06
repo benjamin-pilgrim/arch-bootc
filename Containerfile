@@ -130,7 +130,8 @@ RUN userdel --force --remove makepkg 2>/dev/null || true && \
     grpck -r
 
 # Apply offline systemd presets so the image ships with expected enabled units.
-RUN systemctl --root=/ preset-all
+RUN systemctl --root=/ preset-all && \
+    systemctl --root=/ --global preset-all
 
 RUN chown root:root /usr/bin/newuidmap /usr/bin/newgidmap && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap
 

@@ -27,6 +27,43 @@ def test_hypr_required_files_exist(container: PodmanImage) -> None:
     )
 
 
+def test_waybar_ai_statusbar_support_is_system_managed(container: PodmanImage) -> None:
+    container.shell(
+        """
+        set -eu
+        test -f /usr/share/waybar/arch-bootc/config.jsonc
+        test -f /usr/share/waybar/arch-bootc/conf.d/00-default.jsonc
+        test -f /usr/share/waybar/arch-bootc/conf.d/10-waybar-ai-usage.jsonc
+        test -f /usr/share/waybar/arch-bootc/style.css
+        test -f /usr/lib/systemd/user/waybar.service.d/10-arch-bootc.conf
+        test -f /usr/lib/systemd/user-preset/50-bp.preset
+        test -x /usr/libexec/arch-bootc-waybar-ai-usage.py
+        test -x /usr/libexec/arch-bootc-codex-usage
+        test -x /usr/libexec/arch-bootc-claude-usage
+        grep -Fx "enable waybar.service" /usr/lib/systemd/user-preset/50-bp.preset
+        systemctl --root=/ --global is-enabled waybar.service >/dev/null
+        grep -Fx "ExecStart=" /usr/lib/systemd/user/waybar.service.d/10-arch-bootc.conf
+        grep -Fx "ExecStart=/usr/bin/waybar --config /usr/share/waybar/arch-bootc/config.jsonc --style /usr/share/waybar/arch-bootc/style.css" /usr/lib/systemd/user/waybar.service.d/10-arch-bootc.conf
+        grep -F '"~/.config/waybar/conf.d/*.jsonc"' /usr/share/waybar/arch-bootc/config.jsonc
+        grep -F '"/usr/share/waybar/arch-bootc/conf.d/*.jsonc"' /usr/share/waybar/arch-bootc/config.jsonc
+        grep -F '"modules-right": ["custom/codex-usage", "custom/claude-usage"' /usr/share/waybar/arch-bootc/conf.d/00-default.jsonc
+        grep -F '"/usr/libexec/arch-bootc-codex-usage"' /usr/share/waybar/arch-bootc/conf.d/10-waybar-ai-usage.jsonc
+        grep -F '"/usr/libexec/arch-bootc-claude-usage"' /usr/share/waybar/arch-bootc/conf.d/10-waybar-ai-usage.jsonc
+        """
+    )
+
+
+def test_claude_statusline_rate_limit_recorder_is_managed(container: PodmanImage) -> None:
+    container.shell(
+        """
+        set -eu
+        test -f /etc/claude-code/managed-settings.json
+        test -x /usr/libexec/arch-bootc-claude-statusline-rate-limits.py
+        grep -F '"/usr/libexec/arch-bootc-claude-statusline-rate-limits.py"' /etc/claude-code/managed-settings.json
+        """
+    )
+
+
 def test_x11_keyboard_sync_converts_vc_keymap_when_x11_layout_is_unset(container: PodmanImage) -> None:
     container.shell(
         r"""

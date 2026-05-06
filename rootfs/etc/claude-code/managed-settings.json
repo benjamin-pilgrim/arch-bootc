@@ -1,0 +1,6 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/usr/libexec/arch-bootc-claude-statusline-rate-limits.py"
+  }
+}

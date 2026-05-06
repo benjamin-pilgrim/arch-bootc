@@ -1,0 +1,6 @@
+{
+    "include": [
+        "~/.config/waybar/conf.d/*.jsonc",
+        "/usr/share/waybar/arch-bootc/conf.d/*.jsonc"
+    ]
+}

@@ -1,0 +1,47 @@
+* {
+    border: none;
+    border-radius: 0;
+    font-family: sans-serif;
+    font-size: 13px;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: rgba(22, 24, 28, 0.86);
+    color: #ffffff;
+}
+
+#workspaces button,
+#window,
+#clock,
+#battery,
+#custom-codex-usage,
+#custom-claude-usage,
+#memory,
+#network,
+#pulseaudio {
+    padding: 0 10px;
+    color: #ffffff;
+    background-color: rgba(0, 0, 0, 0.20);
+}
+
+#workspaces button.active {
+    background-color: rgba(86, 112, 135, 0.55);
+}
+
+#custom-codex-usage.warning,
+#custom-claude-usage.warning,
+#battery.warning {
+    background-color: rgba(160, 120, 0, 0.35);
+}
+
+#custom-codex-usage.critical,
+#custom-claude-usage.critical,
+#battery.critical {
+    background-color: rgba(160, 0, 0, 0.35);
+}
+
+#custom-codex-usage.unavailable,
+#custom-claude-usage.unavailable {
+    color: #c8c8c8;
+}
