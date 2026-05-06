@@ -1,227 +1,65 @@
 [tools]
-"aqua:bats-core/bats-core" = "1.12.0"
+uv = "latest"
+
+[env]
+UV_CACHE_DIR = ".uv-cache"
 
 [tasks."image:build"]
 description = "Build the local image with layer cache enabled"
-run = '''
-set -eu
-image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-image_tag="${BUILD_IMAGE_TAG:-local}"
-build_flags="${BUILD_FLAGS:---network=host --layers=true}"
-build_tmpdir="${BUILD_TMPDIR:-${TMPDIR:-/tmp}/arch-bootc-build}"
-
-mkdir -p "$build_tmpdir"
-rm -f build.log
-build_cmd='exec python3 ./scripts/with_podman_wrapper.py env TMPDIR="'$build_tmpdir'" podman build '$build_flags' -t "'$image_name':'$image_tag'" . 2>&1'
-if [ "${BUILD_TIMESTAMP_LOGS:-0}" = "1" ]; then
-  sh -c "$build_cmd" | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee build.log
-else
-  sh -c "$build_cmd" | tee build.log
-fi
-'''
+run = 'exec uv run python ./scripts/build_image.py "$@"'
 
 [tasks."image:build-clean"]
 description = "Build the local image without layer cache"
-run = '''
-set -eu
-BUILD_FLAGS="${BUILD_FLAGS:---network=host --layers=false}" mise run image:build
-'''
+run = 'exec uv run python ./scripts/build_image.py --clean "$@"'
 
 [tasks.bootc]
 description = "Internal: run bootc in the built image (pass args after --)"
-run = '''
-set -eu
-image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-image_tag="${BUILD_IMAGE_TAG:-local}"
-base_dir="$(cd "${BUILD_BASE_DIR:-.}" && pwd)"
-if [ "${image_name#*/}" = "$image_name" ]; then
-  image_ref="localhost/$image_name:$image_tag"
-else
-  image_ref="$image_name:$image_tag"
-fi
-
-runner=""
-if command -v run0 >/dev/null 2>&1; then
-  runner="run0"
-elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  runner="sudo"
-elif systemd-run --uid=0 --wait --collect true 2>/dev/null; then
-  runner="systemd-run --uid=0 --wait --collect"
-fi
-
-selinux_mount=""
-if [ -d /sys/fs/selinux ]; then
-  selinux_mount="-v /sys/fs/selinux:/sys/fs/selinux"
-fi
-
-podman_tty_flags="-i"
-if [ -t 0 ] && [ -t 1 ]; then
-  podman_tty_flags="-it"
-fi
-
-$runner sh -c '
-  set -eu
-  podman run \
-    --rm --privileged --pid=host \
-    '"$podman_tty_flags"' \
-    '"$selinux_mount"' \
-    -v /etc/containers:/etc/containers:Z \
-    -v /var/lib/containers:/var/lib/containers:Z \
-    -v /dev:/dev \
-    -e RUST_LOG=debug \
-    -v "'"$base_dir"':/data" \
-    --security-opt label=type:unconfined_t \
-    "'"$image_ref"'" bootc "$@"
-' -- "$@"
-'''
+run = 'exec uv run python ./scripts/run_bootc.py "$@"'
 
 [tasks."generate-bootable-image"]
 description = "Internal: install the built image to bootable.img"
-run = '''
-set -eu
-base_dir="$(cd "${BUILD_BASE_DIR:-.}" && pwd)"
-filesystem="${BUILD_FILESYSTEM:-ext4}"
-image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-image_tag="${BUILD_IMAGE_TAG:-local}"
-bootable_path="${BOOTABLE_IMAGE_PATH:-$base_dir/bootable.img}"
-bootable_size="${BOOTABLE_IMAGE_SIZE:-40G}"
-bootable_alloc="${BOOTABLE_IMAGE_ALLOCATOR:-truncate}"
-
-if [ "${image_name#*/}" = "$image_name" ]; then
-  image_ref="localhost/$image_name:$image_tag"
-else
-  image_ref="$image_name:$image_tag"
-fi
-
-runner=""
-if command -v run0 >/dev/null 2>&1; then
-  runner="run0"
-elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  runner="sudo"
-elif systemd-run --uid=0 --wait --collect true 2>/dev/null; then
-  runner="systemd-run --uid=0 --wait --collect"
-fi
-
-want_bytes="$(numfmt --from=iec "$bootable_size")"
-have_bytes="$(stat -c '%s' "$bootable_path" 2>/dev/null || echo 0)"
-if [ ! -e "$bootable_path" ] || [ "$have_bytes" -eq 0 ] || [ "$have_bytes" -lt "$want_bytes" ]; then
-  rm -f "$bootable_path"
-  if [ "$bootable_alloc" = "fallocate" ]; then
-    fallocate -l "$bootable_size" "$bootable_path"
-  else
-    truncate -s "$bootable_size" "$bootable_path"
-  fi
-fi
-
-selinux_mount=""
-if [ -d /sys/fs/selinux ]; then
-  selinux_mount="-v /sys/fs/selinux:/sys/fs/selinux"
-fi
-
-$runner sh -c '
-  set -eu
-  podman run \
-    --rm --privileged --pid=host \
-    -i \
-    '"$selinux_mount"' \
-    -v /var/lib/containers:/var/lib/containers:Z \
-    -v /dev:/dev \
-    -e RUST_LOG=debug \
-    -v "'"$base_dir"':/data" \
-    --security-opt label=type:unconfined_t \
-    "'"$image_ref"'" bootc install to-disk \
-      --composefs-backend --via-loopback "/data/$(basename "'"$bootable_path"'")" \
-      --filesystem '"$filesystem"' --wipe --bootloader systemd
-'
-'''
+run = 'exec uv run python ./scripts/generate_bootable_image.py "$@"'
 
 [tasks."image:artifact"]
 description = "Build or refresh the local VM artifact when the image changed"
-run = 'exec python3 ./scripts/generate_vm_artifact.py'
+run = 'exec uv run python ./scripts/generate_vm_artifact.py "$@"'
 
 [tasks."host:upgrade"]
 description = "Build the image and switch the local host via bootc"
-run = '''
-set -eu
-build_flags="${BUILD_FLAGS:---network=host --layers=true}"
-build_tmpdir="${BUILD_TMPDIR:-/var/tmp/arch-bootc-build}"
+run = 'exec uv run python ./scripts/host_upgrade.py "$@"'
 
-runner=""
-if command -v run0 >/dev/null 2>&1; then
-  runner="run0"
-elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  runner="sudo"
-elif systemd-run --uid=0 --wait --collect true 2>/dev/null; then
-  runner="systemd-run --uid=0 --wait --collect"
-else
-  echo "host:upgrade requires root access via run0, passwordless sudo, or systemd-run." >&2
-  exit 1
-fi
-
-$runner sh -c '
-  set -eux
-  build_flags="'"$build_flags"'"
-  build_tmpdir="'"$build_tmpdir"'"
-  tmpfile=""
-  trap '"'"'rm -f "${tmpfile:-}"'"'"' EXIT
-  tmpfile="$(mktemp)"
-  mkdir -p "$build_tmpdir"
-  TMPDIR="$build_tmpdir" podman build $build_flags --iidfile "$tmpfile" -t arch-bootc:latest .
-  img_id="$(sed '"'"'s/^sha256://'"'"' "$tmpfile")"
-  echo "Built image: $img_id"
-  bootc switch --transport containers-storage "$img_id"
-  reboot
-'
-'''
+[tasks.test]
+description = "Run pytest"
+run = 'exec uv run pytest "$@"'
 
 [tasks."test:container"]
 description = "Run container smoke tests against the built image"
-run = '''
-set -eu
-image_name="${BUILD_IMAGE_NAME:-arch-bootc}"
-image_tag="${BUILD_IMAGE_TAG:-local}"
-exec python3 ./scripts/with_podman_wrapper.py env IMAGE_UNDER_TEST="$image_name:$image_tag" mise exec -- bats tests/smoke/container-hypr.bats
-'''
+run = 'exec uv run pytest -m container "$@"'
 
 [tasks."test:vm"]
 description = "Run VM smoke tests against an already booted guest over SSH"
-run = '''
-set -eu
-mise exec -- bats tests/smoke/vm-bootc.bats
-'''
+run = 'exec uv run pytest -m vm "$@"'
 
 [tasks."test:vm-local"]
 description = "Internal: boot local bootable.img with qemu and run VM smoke tests"
-run = 'exec python3 ./scripts/boot_vm_smoke.py'
+run = 'exec uv run pytest tests/vm --bootc-vm "$@"'
 
 [tasks."test:vm:sandbox"]
 description = "Run the sandbox VM smoke tests against an existing stamped artifact"
-run = 'BOOTC_VM_SANDBOX=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_PODMAN_USE_RUN0=0 BOOTC_VM_SKIP_IMAGE_CHECKS=1 BOOTC_VM_SKIP_BOOTABLE_REGEN=1 BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP="${BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP:-1}" mise run test:vm-local'
+run = 'exec uv run python ./scripts/run_vm_preset.py sandbox "$@"'
 
 [tasks."test:vm:graphical"]
 description = "Run the host graphical VM smoke tests against the current artifact"
-run = 'BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_SKIP_IMAGE_CHECKS="${BOOTC_VM_SKIP_IMAGE_CHECKS:-1}" BOOTC_VM_SKIP_BOOTABLE_REGEN="${BOOTC_VM_SKIP_BOOTABLE_REGEN:-1}" BOOTC_PODMAN_USE_RUN0=0 mise run test:vm-local'
+run = 'exec uv run python ./scripts/run_vm_preset.py graphical "$@"'
 
 [tasks."test:vm:sandbox-graphical"]
 description = "Run the sandbox graphical VM smoke tests against an existing stamped artifact"
-run = 'BOOTC_VM_SANDBOX=1 BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_PODMAN_USE_RUN0=0 BOOTC_VM_SKIP_IMAGE_CHECKS=1 BOOTC_VM_SKIP_BOOTABLE_REGEN=1 BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP="${BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP:-1}" mise run test:vm-local'
+run = 'exec uv run python ./scripts/run_vm_preset.py sandbox-graphical "$@"'
 
 [tasks."run:vm:graphical"]
 description = "Build the image, refresh the VM artifact if needed, and boot the graphical VM"
-run = '''
-set -eu
-mise run image:build
-mise run image:artifact
-BOOTC_VM_GRAPHICAL_SESSION_SMOKE=1 BOOTC_VM_INJECT_LOADER_KARGS=0 BOOTC_VM_RUN_TESTS=0 BOOTC_VM_QEMU_DISPLAY="${BOOTC_VM_QEMU_DISPLAY:-gtk,gl=off}" BOOTC_VM_QEMU_GPU="${BOOTC_VM_QEMU_GPU:-virtio-vga}" BOOTC_VM_FOLLOW_LOG="${BOOTC_VM_FOLLOW_LOG:-0}" BOOTC_VM_SKIP_IMAGE_CHECKS="${BOOTC_VM_SKIP_IMAGE_CHECKS:-1}" BOOTC_VM_SKIP_BOOTABLE_REGEN="${BOOTC_VM_SKIP_BOOTABLE_REGEN:-1}" BOOTC_PODMAN_USE_RUN0=0 mise run test:vm-local
-'''
+run = 'exec uv run python ./scripts/run_graphical_vm.py "$@"'
 
 [tasks."test:all"]
 description = "Build the image, refresh the VM artifact, and run the full local test pipeline"
-run = '''
-set -eu
-mise run image:build
-mise run image:artifact
-mise run test:container
-mise run test:vm:sandbox-graphical
-mise run test:vm:graphical
-'''
+run = 'exec uv run python ./scripts/run_all_tests.py "$@"'

@@ -10,6 +10,7 @@ import tempfile
 import textwrap
 from typing import TYPE_CHECKING
 
+from host_ops import root_cmd_required
 from vm_smoke.config import env_str
 
 if TYPE_CHECKING:
@@ -88,9 +89,11 @@ def prepare_qemu_runtime(runner: BootVmSmoke) -> None:
 
 
 def inject_loader_kargs(runner: BootVmSmoke) -> None:
-    run_as_root: list[str] = [] if os.getuid() == 0 else ["sudo"]
     loopdev_proc = subprocess.run(
-        [*run_as_root, "losetup", "-fP", "--show", str(runner.cfg.bootable)],
+        root_cmd_required(
+            ["losetup", "-fP", "--show", str(runner.cfg.bootable)],
+            action="injecting loader kernel arguments",
+        ),
         check=True,
         stdout=subprocess.PIPE,
         text=True,
@@ -98,7 +101,7 @@ def inject_loader_kargs(runner: BootVmSmoke) -> None:
     loopdev = loopdev_proc.stdout.strip()
     esp_mount = runner.state.make_temp_dir("esp-mount.")
     try:
-        runner.run_cmd([*run_as_root, "mount", f"{loopdev}p2", str(esp_mount)])
+        runner.run_cmd(root_cmd_required(["mount", f"{loopdev}p2", str(esp_mount)], action="injecting loader kernel arguments"))
         for entry in sorted((esp_mount / "loader" / "entries").glob("*.conf")):
             lines = entry.read_text().splitlines()
             current_opts = ""
@@ -123,10 +126,10 @@ def inject_loader_kargs(runner: BootVmSmoke) -> None:
                 new_lines.append(f"options {new_opts}")
             temp = runner.state.make_temp_file("loader-entry.", ".conf")
             temp.write_text("\n".join(new_lines) + "\n")
-            runner.run_cmd([*run_as_root, "cp", str(temp), str(entry)])
+            runner.run_cmd(root_cmd_required(["cp", str(temp), str(entry)], action="injecting loader kernel arguments"))
     finally:
-        runner.run_cmd([*run_as_root, "umount", str(esp_mount)], check=False)
-        runner.run_cmd([*run_as_root, "losetup", "-d", loopdev], check=False)
+        runner.run_cmd(root_cmd_required(["umount", str(esp_mount)], action="injecting loader kernel arguments"), check=False)
+        runner.run_cmd(root_cmd_required(["losetup", "-d", loopdev], action="injecting loader kernel arguments"), check=False)
         shutil.rmtree(esp_mount, ignore_errors=True)
 
 

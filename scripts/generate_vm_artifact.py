@@ -1,25 +1,17 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
-import pathlib
-import shutil
 import subprocess
 import sys
 
-
-IMAGE_REF = "localhost/arch-bootc:local"
-BOOTABLE = pathlib.Path("bootable.img")
-STAMP = pathlib.Path("bootable.img.image-id")
+from host_ops import BASE_DIR, BOOTABLE, IMAGE_REF, STAMP, podman_cmd, script_path
 
 
-def podman_cmd(args: list[str]) -> list[str]:
-    cmd = ["podman", *args]
-    if shutil.which("run0"):
-        return ["run0", *cmd]
-    if shutil.which("sudo") and subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
-        return ["sudo", *cmd]
-    return cmd
+def parse_args() -> None:
+    parser = argparse.ArgumentParser(description="Build or refresh the local VM artifact.")
+    parser.parse_args()
 
 
 def run_podman(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -34,10 +26,11 @@ def podman_image_id(ref: str) -> str:
 
 
 def main() -> int:
+    parse_args()
     exists = run_podman(["image", "exists", IMAGE_REF], check=False)
     if exists.returncode != 0:
         print(f"Image {IMAGE_REF} not found; building it now...", flush=True)
-        subprocess.run(["mise", "run", "image:build"], check=True)
+        subprocess.run([sys.executable, str(script_path("build_image.py"))], check=True, cwd=BASE_DIR)
 
     image_id = podman_image_id(IMAGE_REF)
     if not image_id:
@@ -46,7 +39,7 @@ def main() -> int:
 
     current_stamp = STAMP.read_text().strip() if STAMP.exists() else ""
     if not BOOTABLE.exists() or current_stamp != image_id:
-        subprocess.run(["mise", "run", "generate-bootable-image"], check=True)
+        subprocess.run([sys.executable, str(script_path("generate_bootable_image.py"))], check=True, cwd=BASE_DIR)
         STAMP.write_text(f"{image_id}\n")
 
     print("VM artifact ready:")

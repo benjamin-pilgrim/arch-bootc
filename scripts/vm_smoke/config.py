@@ -5,6 +5,8 @@ import pathlib
 import tempfile
 from dataclasses import dataclass, field
 
+from host_ops import BASE_DIR, BOOTABLE, IMAGE_REF, STAMP
+
 
 def env_flag(name: str, default: str = "0") -> bool:
     return os.environ.get(name, default) == "1"
@@ -17,12 +19,12 @@ def env_str(name: str, default: str = "") -> str:
 @dataclass
 class Config:
     vm_verbose: bool = field(default_factory=lambda: env_flag("BOOTC_VM_VERBOSE"))
-    base_dir: pathlib.Path = field(default_factory=lambda: pathlib.Path(env_str("BUILD_BASE_DIR", ".")))
+    base_dir: pathlib.Path = BASE_DIR
     bootable: pathlib.Path = field(init=False)
     bootable_image_id_file: pathlib.Path = field(init=False)
     boot_timeout: int = field(default_factory=lambda: int(env_str("BOOTC_VM_BOOT_TIMEOUT_S", "300")))
-    image_name: str = field(default_factory=lambda: env_str("BUILD_IMAGE_NAME", "arch-bootc"))
-    image_tag: str = field(default_factory=lambda: env_str("BUILD_IMAGE_TAG", "local"))
+    image_name: str = "arch-bootc"
+    image_tag: str = "local"
     qemu_bin: str = field(default_factory=lambda: env_str("QEMU_BIN", "qemu-system-x86_64"))
     vm_sandbox: bool = field(default_factory=lambda: env_flag("BOOTC_VM_SANDBOX"))
     qemu_accel: str = field(default_factory=lambda: env_str("BOOTC_VM_QEMU_ACCEL"))
@@ -57,18 +59,16 @@ class Config:
     homed_firstboot_shell: str = field(default_factory=lambda: env_str("BOOTC_VM_HOMED_FIRSTBOOT_SHELL", "/bin/bash"))
     homed_firstboot_storage: str = field(default_factory=lambda: env_str("BOOTC_VM_HOMED_FIRSTBOOT_STORAGE", "directory"))
     homed_firstboot_password: str = field(default_factory=lambda: env_str("BOOTC_VM_HOMED_FIRSTBOOT_PASSWORD", "cinder742orbit9moss"))
-    use_run0_podman: bool = field(default_factory=lambda: env_flag("BOOTC_PODMAN_USE_RUN0", "1"))
     skip_image_checks: bool = field(default_factory=lambda: env_flag("BOOTC_VM_SKIP_IMAGE_CHECKS"))
     skip_bootable_regen: bool = field(default_factory=lambda: env_flag("BOOTC_VM_SKIP_BOOTABLE_REGEN"))
     sandbox_require_artifact_stamp: bool = field(default_factory=lambda: env_flag("BOOTC_VM_SANDBOX_REQUIRE_ARTIFACT_STAMP", "1"))
 
     def __post_init__(self) -> None:
-        self.bootable = pathlib.Path(env_str("BOOTABLE_IMAGE_PATH", str(self.base_dir / "bootable.img")))
-        self.bootable_image_id_file = pathlib.Path(env_str("BOOTABLE_IMAGE_ID_FILE", f"{self.bootable}.image-id"))
+        self.bootable = BOOTABLE
+        self.bootable_image_id_file = STAMP
         self.ssh_banner_timeout = int(env_str("BOOTC_VM_SSH_BANNER_TIMEOUT_S", str(self.boot_timeout)))
 
         if self.vm_sandbox:
-            self.use_run0_podman = False
             self.skip_image_checks = True
             self.skip_bootable_regen = True
             if not self.direct_kernel_boot:
@@ -109,7 +109,7 @@ class Config:
 
     @property
     def image_ref(self) -> str:
-        return f"localhost/{self.image_name}:{self.image_tag}" if "/" not in self.image_name else f"{self.image_name}:{self.image_tag}"
+        return IMAGE_REF
 
     @property
     def qemu_serial_mode(self) -> str:
