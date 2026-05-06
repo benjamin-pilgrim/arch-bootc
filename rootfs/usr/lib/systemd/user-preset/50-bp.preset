@@ -1,1 +1,2 @@
 enable waybar.service
+enable hypridle.service

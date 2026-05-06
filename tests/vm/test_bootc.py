@@ -49,7 +49,12 @@ def test_hypr_system_configuration_exists_and_matches_expected_layering(vm_guest
         test -f /usr/share/hypr/override.d/00-default.conf
         test -f /usr/share/hypr/override.d/10-desktop.conf
         test -f /usr/share/hypr/hyprlock.conf
+        test -f /usr/share/hypr/hypridle.conf
         test -f /usr/share/hypr/hyprpaper.conf
+        test -f /usr/lib/systemd/user/hypridle.service.d/10-arch-bootc.conf
+        grep -Fx "enable hypridle.service" /usr/lib/systemd/user-preset/50-bp.preset
+        systemctl --root=/ --global is-enabled hypridle.service >/dev/null
+        grep -Fx "ExecStart=/usr/bin/hypridle --config /usr/share/hypr/hypridle.conf" /usr/lib/systemd/user/hypridle.service.d/10-arch-bootc.conf
         test -x /usr/libexec/sync-x11-keymap-from-vconsole.sh
         test -x /usr/share/hypr/scripts/terminal-from-active
         test -x /usr/share/hypr/scripts/browser-tab-to-chrome-app

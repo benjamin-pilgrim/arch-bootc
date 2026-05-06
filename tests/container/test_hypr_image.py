@@ -17,6 +17,7 @@ def test_hypr_required_files_exist(container: PodmanImage) -> None:
         test -f /usr/share/hypr/override.d/10-desktop.conf
         test -x /usr/libexec/sync-x11-keymap-from-vconsole.sh
         test -f /usr/share/hypr/hyprlock.conf
+        test -f /usr/share/hypr/hypridle.conf
         test -f /usr/share/hypr/hyprpaper.conf
         test -f /usr/share/hypr/xdph.conf
         test -x /usr/share/hypr/scripts/terminal-from-active
@@ -52,6 +53,25 @@ def test_waybar_ai_statusbar_support_is_system_managed(container: PodmanImage) -
         grep -F '"modules-right": ["custom/codex-usage", "custom/claude-usage"' /usr/share/waybar/arch-bootc/conf.d/00-default.jsonc
         grep -F '"/usr/libexec/arch-bootc-codex-usage"' /usr/share/waybar/arch-bootc/conf.d/10-waybar-ai-usage.jsonc
         grep -F '"/usr/libexec/arch-bootc-claude-usage"' /usr/share/waybar/arch-bootc/conf.d/10-waybar-ai-usage.jsonc
+        """
+    )
+
+
+def test_hypridle_is_system_managed(container: PodmanImage) -> None:
+    container.shell(
+        """
+        set -eu
+        test -f /usr/share/hypr/hypridle.conf
+        test -f /usr/lib/systemd/user/hypridle.service.d/10-arch-bootc.conf
+        test -f /usr/lib/systemd/user-preset/50-bp.preset
+        grep -Fx "enable hypridle.service" /usr/lib/systemd/user-preset/50-bp.preset
+        systemctl --root=/ --global is-enabled hypridle.service >/dev/null
+        grep -Fx "ExecStart=" /usr/lib/systemd/user/hypridle.service.d/10-arch-bootc.conf
+        grep -Fx "ExecStart=/usr/bin/hypridle --config /usr/share/hypr/hypridle.conf" /usr/lib/systemd/user/hypridle.service.d/10-arch-bootc.conf
+        grep -Fx "    lock_cmd = pidof hyprlock || hyprlock" /usr/share/hypr/hypridle.conf
+        grep -Fx "    before_sleep_cmd = loginctl lock-session" /usr/share/hypr/hypridle.conf
+        grep -Fx "    timeout = 300" /usr/share/hypr/hypridle.conf
+        grep -Fx "    timeout = 330" /usr/share/hypr/hypridle.conf
         """
     )
 
