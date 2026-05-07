@@ -88,7 +88,7 @@ RUN KERNEL_VERSION="$(ls -1 /usr/lib/modules | sort -V | tail -n 1)" && \
 
 RUN --mount=type=cache,target=/var/cache/pacman/pkg \
     --mount=type=cache,target=/usr/lib/pacman/sync \
-    xargs -a /tmp/packages-official-system.txt -- pacman -Sy --noconfirm --needed --overwrite /usr/share/hypr/hyprland.conf --overwrite /usr/share/hypr/hyprlock.conf && \
+    xargs -a /tmp/packages-official-system.txt -- pacman -Sy --noconfirm --needed --overwrite /usr/share/hypr/hyprland.conf --overwrite /usr/share/hypr/hyprlock.conf --overwrite /usr/share/hypr/hypridle.conf && \
     pacman -Scc --noconfirm
 
 ADD rootfs/ /

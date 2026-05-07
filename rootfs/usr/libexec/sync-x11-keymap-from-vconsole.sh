@@ -75,7 +75,7 @@ EOF
     mv "$tmp_keyboard_dropin" "$keyboard_dropin"
 }
 
-write_default_dropin()
+write_default_dropin
 
 if ! command -v localectl >/dev/null 2>&1; then
     rm -f "$keyboard_dropin"

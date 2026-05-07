@@ -29,6 +29,7 @@ packages = [
   "go-yq",
   "wget",
   "podman",
+  "qemu-system-x86",
   "just",
   "git",
   "hyprland",
