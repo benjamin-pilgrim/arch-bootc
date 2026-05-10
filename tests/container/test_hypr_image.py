@@ -15,6 +15,7 @@ def test_hypr_required_files_exist(container: PodmanImage) -> None:
         test -f /usr/share/hypr/hyprland.conf
         test -f /usr/share/hypr/override.d/00-default.conf
         test -f /usr/share/hypr/override.d/10-desktop.conf
+        test -f /usr/share/hypr/override.d/20-hardware-keys.conf
         test -x /usr/libexec/sync-x11-keymap-from-vconsole.sh
         test -f /usr/share/hypr/hyprlock.conf
         test -f /usr/share/hypr/hypridle.conf
@@ -22,6 +23,7 @@ def test_hypr_required_files_exist(container: PodmanImage) -> None:
         test -f /usr/share/hypr/xdph.conf
         test -x /usr/share/hypr/scripts/terminal-from-active
         test -x /usr/share/hypr/scripts/browser-tab-to-chrome-app
+        test -x /usr/share/hypr/scripts/toggle-bluetooth
         command -v lsof >/dev/null
         command -v wtype >/dev/null
         test -f /usr/share/backgrounds/arch-bootc/wallpaper.png
@@ -271,10 +273,17 @@ def test_desktop_override_references_system_config_paths(container: PodmanImage)
         grep -F "/usr/share/hypr/scripts/terminal-from-active fork-codex" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "/usr/share/hypr/scripts/terminal-from-active new-codex" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "/usr/share/hypr/scripts/browser-tab-to-chrome-app" /usr/share/hypr/override.d/10-desktop.conf
-        grep -F "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+" /usr/share/hypr/override.d/10-desktop.conf
-        grep -F "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" /usr/share/hypr/override.d/10-desktop.conf
         grep -F "preload = /usr/share/backgrounds/arch-bootc/wallpaper.png" /usr/share/hypr/hyprpaper.conf
         grep -F "path = /usr/share/backgrounds/arch-bootc/wallpaper.png" /usr/share/hypr/hyprlock.conf
+        """
+    )
+
+
+def test_hardware_key_override_references_system_helpers(container: PodmanImage) -> None:
+    container.shell(
+        """
+        grep -Fx "bindl = , XF86Bluetooth, exec, /usr/share/hypr/scripts/toggle-bluetooth" /usr/share/hypr/override.d/20-hardware-keys.conf
+        ! grep -F "XF86RFKill" /usr/share/hypr/override.d/20-hardware-keys.conf
         """
     )
 
@@ -316,8 +325,11 @@ def test_networkmanager_enabled_and_networkd_disabled(container: PodmanImage) ->
     container.shell(
         """
         command -v nm-applet >/dev/null
+        command -v bluetoothctl >/dev/null
         systemctl --root=/ is-enabled NetworkManager.service >/dev/null
+        systemctl --root=/ is-enabled bluetooth.service >/dev/null
         test -L /etc/systemd/system/multi-user.target.wants/NetworkManager.service
+        test -L /etc/systemd/system/bluetooth.target.wants/bluetooth.service
         systemctl --root=/ is-enabled arch-bootc-sync-x11-keymap.service >/dev/null
         test -L /etc/systemd/system/multi-user.target.wants/arch-bootc-sync-x11-keymap.service
         ! systemctl --root=/ is-enabled systemd-networkd.service >/dev/null

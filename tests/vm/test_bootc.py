@@ -48,6 +48,7 @@ def test_hypr_system_configuration_exists_and_matches_expected_layering(vm_guest
         grep -Fx "source = $HOME/.config/hypr/hyprland.conf" /usr/share/hypr/hyprland.conf
         test -f /usr/share/hypr/override.d/00-default.conf
         test -f /usr/share/hypr/override.d/10-desktop.conf
+        test -f /usr/share/hypr/override.d/20-hardware-keys.conf
         test -f /usr/share/hypr/hyprlock.conf
         test -f /usr/share/hypr/hypridle.conf
         test -f /usr/share/hypr/hyprpaper.conf
@@ -58,6 +59,7 @@ def test_hypr_system_configuration_exists_and_matches_expected_layering(vm_guest
         test -x /usr/libexec/sync-x11-keymap-from-vconsole.sh
         test -x /usr/share/hypr/scripts/terminal-from-active
         test -x /usr/share/hypr/scripts/browser-tab-to-chrome-app
+        test -x /usr/share/hypr/scripts/toggle-bluetooth
         command -v lsof >/dev/null
         command -v wtype >/dev/null
         test -f /usr/share/backgrounds/arch-bootc/wallpaper.png
