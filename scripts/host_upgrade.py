@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import pathlib
 import subprocess
-import tempfile
 
 from host_ops import BASE_DIR, HOST_BUILD_TMPDIR, HOST_IMAGE_REF, can_run_as_root, root_cmd, root_cmd_with_env
 
@@ -22,12 +21,12 @@ def read_image_id(path: pathlib.Path) -> str:
 def main() -> int:
     parse_args()
     if not can_run_as_root(allow_systemd_run=True):
-        print("host:upgrade requires root access via run0, passwordless sudo, or systemd-run.")
+        print("host:upgrade requires root access via sudo, run0, or systemd-run.")
         return 1
 
     HOST_BUILD_TMPDIR.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(delete=False) as iid:
-        iidfile = pathlib.Path(iid.name)
+    iidfile = HOST_BUILD_TMPDIR / "host-upgrade.iid"
+    subprocess.run(root_cmd(["rm", "-f", "--", str(iidfile)], allow_systemd_run=True), check=False)
     try:
         subprocess.run(
             root_cmd_with_env(
@@ -57,7 +56,7 @@ def main() -> int:
         subprocess.run(root_cmd(["reboot"], allow_systemd_run=True), check=True)
         return 0
     finally:
-        iidfile.unlink(missing_ok=True)
+        subprocess.run(root_cmd(["rm", "-f", "--", str(iidfile)], allow_systemd_run=True), check=False)
 
 
 if __name__ == "__main__":

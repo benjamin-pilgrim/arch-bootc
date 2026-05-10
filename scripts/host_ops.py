@@ -29,10 +29,14 @@ def passwordless_sudo_available() -> bool:
 def root_prefix(*, allow_systemd_run: bool = False) -> list[str]:
     if os.getuid() == 0:
         return []
-    if shutil.which("run0"):
-        return ["run0"]
+    # Prefer sudo so one timestamp can cover nested build/test workflows.
+    # run0 is a fallback, but it tends to prompt per top-level invocation.
     if passwordless_sudo_available():
         return ["sudo"]
+    if shutil.which("sudo"):
+        return ["sudo"]
+    if shutil.which("run0"):
+        return ["run0"]
     if allow_systemd_run and shutil.which("systemd-run") and subprocess.run(
         ["systemd-run", "--uid=0", "--wait", "--collect", "true"],
         capture_output=True,
@@ -51,7 +55,7 @@ def root_cmd(args: list[str], *, allow_systemd_run: bool = False) -> list[str]:
 
 def root_cmd_required(args: list[str], *, allow_systemd_run: bool = False, action: str = "this operation") -> list[str]:
     if not can_run_as_root(allow_systemd_run=allow_systemd_run):
-        helpers = "run0, passwordless sudo"
+        helpers = "sudo or run0"
         if allow_systemd_run:
             helpers += ", or systemd-run"
         raise SystemExit(f"{action} requires root access via {helpers}.")
