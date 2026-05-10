@@ -32,19 +32,19 @@ RUN mv /var/lib/pacman /usr/lib/pacman && echo "DBPath = /usr/lib/pacman/" >> /e
 COPY --from=bootc-manifest /tmp/out/packages-official-bootc-runtime.txt /tmp/packages-official-bootc-runtime.txt
 COPY --from=bootc-manifest /tmp/out/packages-official-bootc-build.txt /tmp/packages-official-bootc-build.txt
 
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
+RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
+    --mount=type=cache,target=/usr/lib/pacman/sync,sharing=locked \
     pacman -Syu --noconfirm --needed archlinux-keyring
 
 #bootc runtime deps
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
+RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
+    --mount=type=cache,target=/usr/lib/pacman/sync,sharing=locked \
     xargs -a /tmp/packages-official-bootc-runtime.txt -- pacman -Sy --noconfirm --needed
 
 FROM bootc-base as bootc-build
 
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
+RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
+    --mount=type=cache,target=/usr/lib/pacman/sync,sharing=locked \
     xargs -a /tmp/packages-official-bootc-build.txt -- pacman -Sy --noconfirm --needed
 
 COPY --from=bootc-manifest /tmp/out/bootc-version.txt /tmp/bootc-version.txt
@@ -72,8 +72,8 @@ COPY --from=system-manifest /tmp/out/packages-official-system.txt /tmp/packages-
 ADD rootfs/ /
 
 #dracut runtime deps
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
+RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
+    --mount=type=cache,target=/usr/lib/pacman/sync,sharing=locked \
     xargs -a /tmp/packages-official-kernel-runtime.txt -- pacman -Sy --noconfirm --needed
 
 # Regression with newer dracut broke this
@@ -86,8 +86,9 @@ COPY scripts/build/build-aur.py /usr/libexec/build-aur.py
 RUN KERNEL_VERSION="$(ls -1 /usr/lib/modules | sort -V | tail -n 1)" && \
     dracut --force --no-hostonly --reproducible --zstd --verbose --kver "$KERNEL_VERSION" "/usr/lib/modules/$KERNEL_VERSION/initramfs.img"
 
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
+RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
+    --mount=type=cache,target=/usr/lib/pacman/sync,sharing=locked \
+    find /var/cache/pacman/pkg -type f \( -name '*.part' -o -name 'python-*.pkg.tar*' \) -delete && \
     xargs -a /tmp/packages-official-system.txt -- pacman -Sy --noconfirm --needed --overwrite /usr/share/hypr/hyprland.conf --overwrite /usr/share/hypr/hyprlock.conf --overwrite /usr/share/hypr/hypridle.conf && \
     pacman -Scc --noconfirm
 
@@ -102,14 +103,14 @@ RUN useradd --uid 1000 --create-home --shell /bin/bash --user-group makepkg && \
     chmod 600 /home/makepkg/.gnupg/gpg.conf
 
 COPY --from=keys-manifest /tmp/out/keys.json /tmp/keys.json
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
+RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
+    --mount=type=cache,target=/usr/lib/pacman/sync,sharing=locked \
     runuser -u makepkg -- bash /usr/libexec/import-keys.sh /tmp/keys.json
 
 COPY --from=aur-manifest /tmp/out/packages-aur.txt /tmp/packages-aur.txt
 
-RUN --mount=type=cache,target=/var/cache/pacman/pkg \
-    --mount=type=cache,target=/usr/lib/pacman/sync \
+RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
+    --mount=type=cache,target=/usr/lib/pacman/sync,sharing=locked \
     --mount=type=cache,target=/home/makepkg/cache/aur,uid=1000,gid=1000,mode=0775 \
     --mount=type=cache,target=/home/makepkg/cache/src,uid=1000,gid=1000,mode=0775 \
     --mount=type=cache,target=/home/makepkg/cache/build,uid=1000,gid=1000,mode=0775 \
