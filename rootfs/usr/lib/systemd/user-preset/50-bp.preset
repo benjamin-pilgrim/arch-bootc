@@ -1,2 +1,8 @@
 enable waybar.service
 enable hypridle.service
+disable podman.service
+disable podman.socket
+disable podman-auto-update.service
+disable podman-auto-update.timer
+disable podman-clean-transient.service
+disable podman-restart.service

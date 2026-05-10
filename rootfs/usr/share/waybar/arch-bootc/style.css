@@ -13,9 +13,7 @@ window > box {
     margin: 10px 10px 0 10px;
 }
 
-label,
-box,
-button {
+label,box,button {
     border-radius: 5px;
 }
 
@@ -35,7 +33,7 @@ button {
 }
 
 #workspaces button.hosting-monitor {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255,255,255,0.1);
 }
 
 #workspaces button.urgent {
@@ -53,8 +51,6 @@ button {
 #pulseaudio,
 #wireplumber,
 #custom-media,
-#custom-codex-usage,
-#custom-claude-usage,
 #tray,
 #mode,
 #idle-inhibitor,
@@ -66,7 +62,7 @@ button {
     padding: 0 10px;
     margin: 0;
     color: #ffffff;
-    background-color: rgba(0, 0, 0, 0.25);
+    background-color: rgba(0,0,0,0.25);
 }
 
 #window,
@@ -79,22 +75,21 @@ button {
 }
 
 #battery.discharging {
-    background-color: rgba(160, 160, 0, 0.25);
+    background-color: rgba(160,160,0,0.25);
 }
 
-#battery.charging,
-#battery.plugged {
-    background-color: rgba(0, 160, 0, 0.25);
+#battery.charging, #battery.plugged {
+    background-color: rgba(0,160,0,0.25);
 }
 
 @keyframes blink {
     to {
-        background-color: rgba(160, 0, 0, 0.25);
+        background-color: rgba(160,0,0,0.25);
     }
 }
 
 #battery.critical:not(.charging) {
-    background-color: rgba(240, 0, 0, 1);
+    background-color: rgba(240,0,0,1);
     animation-name: blink;
     animation-duration: 0.5s;
     animation-timing-function: linear;
@@ -105,27 +100,15 @@ button {
 #network,
 #bluetooth.connected,
 #pulseaudio.in:not(.source-muted) {
-    background-color: rgba(41, 128, 185, 0.5);
+    background-color: rgba(41,128,185,0.5);
 }
 
 #network.disconnected,
 #pulseaudio.in.source-muted,
 #pulseaudio.out.muted {
-    background-color: rgba(245, 60, 60, 0.25);
+    background-color: rgba(245,60,60,0.25);
 }
 
-#custom-codex-usage.warning,
-#custom-claude-usage.warning {
-    background-color: rgba(160, 160, 0, 0.25);
-}
-
-#custom-codex-usage.critical,
-#custom-claude-usage.critical,
 #temperature.critical {
-    background-color: #eb4d4b;
-}
-
-#custom-codex-usage.unavailable,
-#custom-claude-usage.unavailable {
-    color: #c8c8c8;
+    background-color: #eb4d4b
 }
