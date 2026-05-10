@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -166,6 +167,9 @@ def parse_codex_rate_limits(payload: Any) -> dict[str, Any] | None:
 
 
 def codex_app_server_request(messages: list[dict[str, Any]], timeout_s: float = 8.0) -> dict[str, Any] | None:
+    if shutil.which("codex") is None:
+        return None
+
     proc = subprocess.Popen(
         ["codex", "app-server"],
         stdin=subprocess.PIPE,
