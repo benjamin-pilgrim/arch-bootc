@@ -51,6 +51,8 @@ label,box,button {
 #pulseaudio,
 #wireplumber,
 #custom-media,
+#custom-codex-usage,
+#custom-claude-usage,
 #tray,
 #mode,
 #idle-inhibitor,
@@ -109,6 +111,18 @@ label,box,button {
     background-color: rgba(245,60,60,0.25);
 }
 
+#custom-codex-usage.warning,
+#custom-claude-usage.warning {
+    background-color: rgba(160,160,0,0.25);
+}
+
+#custom-codex-usage.critical,
+#custom-claude-usage.critical,
 #temperature.critical {
     background-color: #eb4d4b
+}
+
+#custom-codex-usage.unavailable,
+#custom-claude-usage.unavailable {
+    color: #c8c8c8;
 }
