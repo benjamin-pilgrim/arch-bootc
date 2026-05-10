@@ -1,41 +1,127 @@
 {
-    "layer": "top",
-    "position": "top",
-    "height": 30,
-    "spacing": 0,
-    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "height": 40,
+    "spacing": 5,
+    "modules-left": ["hyprland/workspaces","hyprland/window"],
     "modules-center": [],
-    "modules-right": ["custom/codex-usage", "custom/claude-usage", "pulseaudio", "network", "memory", "battery", "clock"],
+    "modules-right": ["custom/codex-usage", "custom/claude-usage", "custom/colorscheme", "backlight", "pulseaudio#out", "pulseaudio#in", "network", "bluetooth", "memory", "temperature", "battery", "tray", "clock#date", "clock#time", "custom/notification"],
     "hyprland/workspaces": {
+        "disable-scroll": true,
+        "all-outputs": true,
+        "warp-on-scroll": false,
         "format": "{name}"
     },
-    "hyprland/window": {
-        "format": "{}",
-        "max-length": 80
+    "custom/colorscheme": {
+        "interval": 1,
+        "return-type": "json",
+        "format": "{icon}",
+        "format-icons": {
+            "prefer-dark": "\uF186",
+            "prefer-light": "\uF185️"
+        },
+        "on-click": "if [ \"$(gsettings get org.gnome.desktop.interface color-scheme)\" = \"'prefer-dark'\" ]; then gsettings set org.gnome.desktop.interface color-scheme 'prefer-light' && gsettings set org.gnome.desktop.interface gtk-theme Adwaita; else gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' && gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark; fi",
+        "exec": "gsettings get org.gnome.desktop.interface color-scheme | tr -d \"'\" | jq -R '{\"text\": .,\"alt\": .,\"tooltip\": .,\"class\": ., \"percentage\": null}'  --unbuffered --compact-output",
+        "exec-on-event": true
     },
-    "clock": {
-        "format": "{:%H:%M}",
-        "tooltip-format": "{:%A, %d %B %Y}"
+    "backlight": {
+        "format": "{percent}% {icon}",
+        "format-icons": [
+            "󰃞",
+            "󰃟",
+            "󰃝",
+            "󰃠"
+        ]
     },
-    "battery": {
-        "format": "{capacity}% {icon}",
-        "format-charging": "{capacity}% ",
-        "format-plugged": "{capacity}% ",
-        "format-icons": ["", "", "", "", ""]
-    },
-    "network": {
-        "format-wifi": "{essid} ({signalStrength}%) ",
-        "format-ethernet": "{ipaddr}/{cidr} ",
-        "format-disconnected": "Disconnected"
-    },
-    "pulseaudio": {
-        "format": "{volume}% {icon}",
+    "pulseaudio#out": {
+        "format": "{volume}% {icon} ",
+        "format-bluetooth": "{volume}% {icon} ",
+        "format-bluetooth-muted": " {icon} ",
         "format-muted": "",
         "format-icons": {
+            "headphone": "",
+            "hands-free": "",
+            "headset": "",
+            "phone": "",
+            "portable": "",
+            "car": "",
             "default": ["", "", ""]
-        }
+        },
+        "on-click": "pavucontrol -t 3"
+    },
+    "pulseaudio#in": {
+        "format": "{format_source}",
+        "format-source": "",
+        "format-source-muted": " ",
+        "on-click": "pavucontrol -t 4"
+    },
+    "network": {
+        "interface": "wlp3s0",
+        "family": "ipv4",
+        "format-wifi": "{essid} ({signalStrength}%)  ",
+        "format-ethernet": "{ipaddr}/{cidr}  ",
+        "tooltip-format": "{ifname} via {gwaddr} ",
+        "format-linked": "{ifname} (No IP)  ",
+        "format-disconnected": "Disconnected ⚠",
+        "format-alt": "{ifname}: {ipaddr}/{cidr}",
+        "tooltip": false
+    },
+    "bluetooth": {
+        "format-connected": "󰂱 {device_battery_percentage}%",
+        "format-on": "",
+        "format-off": "󰂲",
+        "format-disabled": "󰂲",
+        "format-no-controller": "󰂲",
+        "on-click": "blueman-manager"
+    },
+    "tray": {
+        "spacing": 10
+    },
+    "clock#date": {
+        "timezone": "Europe/London",
+        "format": "{:%A %d %B %Y}",
+        "tooltip": false
+    },
+    "clock#time": {
+        "timezone": "Europe/London",
+        "format": "{:%I:%M %p}",
+        "tooltip": false
     },
     "memory": {
         "format": "{}% "
+    },
+    "temperature": {
+        "critical-threshold": 80,
+        "format": "{temperatureC}°C {icon}",
+        "format-icons": ["", "", ""]
+    },
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{capacity}% {icon}",
+        "format-charging": "{capacity}% ",
+        "format-plugged": "{capacity}% ",
+        "format-alt": "{time} {icon}",
+        "format-icons": ["", "", "", "", ""]
+    },
+    "custom/notification": {
+        "tooltip": false,
+        "format": "{icon}",
+        "format-icons": {
+            "notification": "<span foreground='red'><sup></sup></span>",
+            "none": "",
+            "dnd-notification": "<span foreground='red'><sup></sup></span>",
+            "dnd-none": "",
+            "inhibited-notification": "<span foreground='red'><sup></sup></span>",
+            "inhibited-none": "",
+            "dnd-inhibited-notification": "<span foreground='red'><sup></sup></span>",
+            "dnd-inhibited-none": ""
+        },
+        "return-type": "json",
+        "exec-if": "which swaync-client",
+        "exec": "swaync-client -swb",
+        "on-click": "swaync-client -t -sw",
+        "on-click-right": "swaync-client -d -sw",
+        "escape": true
     }
 }
