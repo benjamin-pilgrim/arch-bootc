@@ -79,10 +79,16 @@ def pacman_dep_satisfied(dep_expr):
     return result.returncode == 0 and result.stdout.strip() == ""
 
 
+def ensure_pacman_sync():
+    if not Path("/usr/lib/pacman/sync/core.db").exists():
+        run(["pacman", "-Sy", "--noconfirm"])
+
+
 def pacman_official_available(pkg_name):
     global official_repo_packages
     if official_repo_packages is None:
-        official_repo_packages = set(out(["bash", "-lc", "pacman -Sy >/dev/null && pacman -Ssq"]).splitlines())
+        ensure_pacman_sync()
+        official_repo_packages = set(out(["pacman", "-Ssq"]).splitlines())
     return pkg_name in official_repo_packages
 
 
@@ -90,7 +96,8 @@ def install_official(packages):
     pkgs = sorted(set(packages))
     if pkgs:
         log(f"install official deps: {' '.join(pkgs)}")
-        run(["pacman", "-Sy", "--noconfirm", "--needed", *pkgs])
+        ensure_pacman_sync()
+        run(["pacman", "-S", "--noconfirm", "--needed", *pkgs])
 
 
 def aur_rpc_json(url):
